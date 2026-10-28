@@ -66,6 +66,8 @@ OpenCode Go key on first launch, tests the connection, and then lets you pick a 
 
 To run on the device, set your team in *Signing & Capabilities* (the bundle id is
 `pt.com.desousa.filipe.ChattyChattyGoGo`; change it in `project.yml` if you want a different one).
+The committed `DEVELOPMENT_TEAM` is the maintainer's; if you are not on that team, replace it
+with your own in `project.yml` (or override it in Xcode) before building.
 
 Command line build:
 
