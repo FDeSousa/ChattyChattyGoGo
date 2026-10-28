@@ -92,15 +92,9 @@ private struct JevTrialRow: View {
 /// Edits one trial: the subject, the questions, and the Jev id to ask.
 struct JevTrialEditorView: View {
     @Bindable var trial: JevTrial
-    @State private var viewModel: JevTrialViewModel
-
-    init(trial: JevTrial) {
-        self.trial = trial
-        _viewModel = State(wrappedValue: JevTrialViewModel(trial: trial))
-    }
 
     var body: some View {
-        let _ = viewModel.revision
+        let _ = trial.revision
         Form {
             subjectSection
             questionsSection
@@ -146,19 +140,19 @@ struct JevTrialEditorView: View {
             ForEach(trial.questions) { question in
                 JevQuestionEditor(
                     questionID: question.id,
-                    viewModel: viewModel
+                    trial: trial
                 )
             }
             .onDelete { offsets in
                 for index in offsets.sorted(by: >) where index < trial.questions.count {
-                    viewModel.deleteQuestion(withID: trial.questions[index].id)
+                    trial.deleteQuestion(withID: trial.questions[index].id)
                 }
             }
 
             Menu {
                 ForEach(JevQuestionType.allCases, id: \.self) { type in
                     Button(type.title) {
-                        viewModel.addQuestion(type: type)
+                        trial.addQuestion(type: type)
                     }
                 }
             } label: {
@@ -192,7 +186,7 @@ private struct JevOptionRow: View {
     let optionID: UUID
     let questionID: UUID
     let canDelete: Bool
-    let viewModel: JevTrialViewModel
+    @Bindable var trial: JevTrial
     @Binding var nameBinding: String
     @Binding var descriptionBinding: String
 
@@ -205,7 +199,7 @@ private struct JevOptionRow: View {
                     .font(.caption)
             }
             Button {
-                viewModel.deleteOption(withID: optionID, fromQuestionWithID: questionID)
+                trial.deleteOption(withID: optionID, fromQuestionWithID: questionID)
             } label: {
                 Image(systemName: "minus.circle.fill")
                     .foregroundStyle(.red)
@@ -224,7 +218,7 @@ private struct JevRubricRow: View {
     let index: Int
     let questionID: UUID
     let canDelete: Bool
-    let viewModel: JevTrialViewModel
+    @Bindable var trial: JevTrial
     @Binding var textBinding: String
 
     var body: some View {
@@ -235,7 +229,7 @@ private struct JevRubricRow: View {
                 .frame(width: 16, alignment: .leading)
             TextField("Describe level \(index)", text: $textBinding)
             Button {
-                viewModel.deleteRubricLevel(withID: levelID, fromQuestionWithID: questionID)
+                trial.deleteRubricLevel(withID: levelID, fromQuestionWithID: questionID)
             } label: {
                 Image(systemName: "minus.circle.fill")
                     .foregroundStyle(.red)
@@ -256,20 +250,20 @@ private struct JevRubricRow: View {
 /// bound copy predates field work happening elsewhere in the same form.
 private struct JevQuestionEditor: View {
     let questionID: UUID
-    let viewModel: JevTrialViewModel
+    @Bindable var trial: JevTrial
 
     /// The row's current state, read from the trial by id.
     private var question: JevQuestion {
-        viewModel.question(withID: questionID)
+        trial.questions.first(where: { $0.id == questionID })
             ?? JevQuestion(type: .boolean, instructions: "")
     }
 
     private func mutate(_ change: (inout JevQuestion) -> Void) {
-        viewModel.mutate(questionID, change)
+        trial.mutateQuestion(withID: questionID, change)
     }
 
     var body: some View {
-        let _ = viewModel.revision
+        let _ = trial.revision
         VStack(alignment: .leading, spacing: 10) {
             Picker("Type", selection: typeBinding) {
                 ForEach(JevQuestionType.allCases, id: \.self) { type in
@@ -315,14 +309,14 @@ private struct JevQuestionEditor: View {
                     optionID: option.id,
                     questionID: questionID,
                     canDelete: question.options.count >= 3,
-                    viewModel: viewModel,
+                    trial: trial,
                     nameBinding: optionNameBinding(option.id),
                     descriptionBinding: optionDescriptionBinding(option.id)
                 )
             }
 
             Button {
-                viewModel.addOption(toQuestionWithID: questionID)
+                trial.addOption(toQuestionWithID: questionID)
             } label: {
                 Label("Add option", systemImage: "plus.circle")
             }
@@ -338,13 +332,13 @@ private struct JevQuestionEditor: View {
                     index: index,
                     questionID: questionID,
                     canDelete: question.rubric.count >= 3,
-                    viewModel: viewModel,
+                    trial: trial,
                     textBinding: rubricBinding(index)
                 )
             }
 
             Button {
-                viewModel.addRubricLevel(toQuestionWithID: questionID)
+                trial.addRubricLevel(toQuestionWithID: questionID)
             } label: {
                 Label("Add level", systemImage: "plus.circle")
             }

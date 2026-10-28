@@ -21,6 +21,8 @@ final class JevTrial {
     var sessionID: String
     /// The questions as currently edited, JSON-encoded.
     private var questionSetData: Data
+    /// Bumped on every edit so observing views re-render.
+    var revision: Int = 0
 
     @Relationship(deleteRule: .cascade, inverse: \JevRun.trial)
     var runs: [JevRun] = []
@@ -184,6 +186,86 @@ final class JevRunAnswer {
             return String(format: "%.2f", scoreValue)
         case nil:
             return "—"
+        }
+    }
+}
+
+// MARK: - Editing helpers (used by the editor view)
+
+extension JevTrial {
+    /// Applies a field-sized change to the question with the given id.
+    func mutateQuestion(withID id: UUID, _ change: (inout JevQuestion) -> Void) {
+        var questions = self.questions
+        guard let index = questions.firstIndex(where: { $0.id == id }) else { return }
+        var row = questions[index]
+        change(&row)
+        questions[index] = row
+        self.questions = questions
+        self.revision &+= 1
+    }
+
+    func addQuestion(type: JevQuestionType) {
+        var questions = self.questions
+        switch type {
+        case .boolean:
+            questions.append(JevQuestion(type: .boolean, instructions: ""))
+        case .choice:
+            questions.append(JevQuestion(
+                type: .choice,
+                instructions: "",
+                options: [
+                    JevOption(name: "first", description: "What the first option covers"),
+                    JevOption(name: "second", description: "What the second option covers")
+                ]
+            ))
+        case .score:
+            questions.append(JevQuestion(
+                type: .score,
+                instructions: "",
+                options: [],
+                rubric: [JevRubricLevel(text: "Low"), JevRubricLevel(text: "Likely"), JevRubricLevel(text: "High")]
+            ))
+        }
+        self.questions = questions
+        self.revision &+= 1
+    }
+
+    func deleteQuestion(withID id: UUID) {
+        self.questions = self.questions.filter { $0.id != id }
+        self.revision &+= 1
+    }
+
+    func addOption(toQuestionWithID id: UUID) {
+        mutateQuestion(withID: id) { question in
+            var updated = question
+            var seed = updated.options.count + 1
+            var name = "option\(seed)"
+            while updated.options.contains(where: { $0.name == name }) {
+                seed += 1
+                name = "option\(seed)"
+            }
+            updated.options.append(JevOption(name: name, description: ""))
+            question = updated
+        }
+    }
+
+    func deleteOption(withID optionID: UUID, fromQuestionWithID id: UUID) {
+        mutateQuestion(withID: id) { question in
+            question.options.removeAll { $0.id == optionID }
+        }
+    }
+
+    func addRubricLevel(toQuestionWithID id: UUID) {
+        mutateQuestion(withID: id) { question in
+            var updated = question
+            updated.rubric.append(JevRubricLevel(text: "More \(updated.rubric.count)"))
+            question = updated
+        }
+    }
+
+    func deleteRubricLevel(withID levelID: UUID, fromQuestionWithID id: UUID) {
+        mutateQuestion(withID: id) { question in
+            question.rubric.removeAll { $0.id == levelID }
         }
     }
 }
