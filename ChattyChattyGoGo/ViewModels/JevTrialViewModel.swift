@@ -11,6 +11,9 @@ final class JevTrialViewModel: Identifiable {
     let trial: JevTrial
     var isRunning = false
     var runError: String?
+    /// Bumped on every edit so observing views re-render even when the
+    /// underlying @Model observation is slow to propagate.
+    var revision: Int = 0
     /// The evaluation from the most recent run, for instant display before the run list refreshes.
     private(set) var latestRun: JevRun?
 
@@ -48,6 +51,7 @@ final class JevTrialViewModel: Identifiable {
         change(&row)
         questions[index] = row
         trial.questions = questions
+        revision &+= 1
     }
 
     func addQuestion(type: JevQuestionType) {
@@ -68,14 +72,16 @@ final class JevTrialViewModel: Identifiable {
             questions.append(JevQuestion(
                 type: .score,
                 instructions: "",
-                rubric: ["Low", "Likely", "High"]
+                rubric: [JevRubricLevel(text: "Low"), JevRubricLevel(text: "Likely"), JevRubricLevel(text: "High")]
             ))
         }
         trial.questions = questions
+        revision &+= 1
     }
 
     func deleteQuestion(withID id: UUID) {
         trial.questions = trial.questions.filter { $0.id != id }
+        revision &+= 1
     }
 
     func addOption(toQuestionWithID id: UUID) {
@@ -92,7 +98,14 @@ final class JevTrialViewModel: Identifiable {
         }
     }
 
-    /// Deletes the option at `index` - the row that shows it knows its own offset.
+    /// Deletes the option identified by `optionID`.
+    func deleteOption(withID optionID: UUID, fromQuestionWithID id: UUID) {
+        mutate(id) { question in
+            question.options.removeAll { $0.id == optionID }
+        }
+    }
+
+    /// Deletes the option at `index` - kept for index-based callers.
     func deleteOption(at index: Int, fromQuestionWithID id: UUID) {
         mutate(id) { question in
             guard index < question.options.count else { return }
@@ -103,7 +116,7 @@ final class JevTrialViewModel: Identifiable {
     func addRubricLevel(toQuestionWithID id: UUID) {
         mutate(id) { question in
             var updated = question
-            updated.rubric.append("More \(updated.rubric.count)")
+            updated.rubric.append(JevRubricLevel(text: "More \(updated.rubric.count)"))
             question = updated
         }
     }

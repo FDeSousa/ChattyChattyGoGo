@@ -35,7 +35,7 @@ final class JevTests: XCTestCase {
         let question = JevQuestion(
             type: .score,
             instructions: "How annoyed?",
-            rubric: ["Calm", "Frustrated"]
+            rubric: [JevRubricLevel(text: "Calm"), JevRubricLevel(text: "Frustrated")]
         )
         let wire = toPlainJSON(question.wire)
         XCTAssertEqual(wire["criteria"] as? [String], ["Calm", "Frustrated"])
@@ -57,7 +57,7 @@ final class JevTests: XCTestCase {
     }
 
     func testAScoreQuestionKnowsItsHighestLevel() {
-        let question = JevQuestion(type: .score, instructions: "Score", rubric: ["A", "B", "C"])
+        let question = JevQuestion(type: .score, instructions: "Score", rubric: [JevRubricLevel(text: "A"), JevRubricLevel(text: "B"), JevRubricLevel(text: "C")])
         XCTAssertEqual(question.scoreMaximum, 2)
     }
 
@@ -320,14 +320,14 @@ final class JevTests: XCTestCase {
         let (trial, viewModel) = try makeEditor()
         viewModel.addQuestion(type: .score)
         let id = try XCTUnwrap(trial.questions.first?.id)
-        XCTAssertEqual(viewModel.question(withID: id)?.rubric, ["Low", "Likely", "High"])
+        XCTAssertEqual(viewModel.question(withID: id)?.rubric.map(\.text), ["Low", "Likely", "High"])
 
         viewModel.addRubricLevel(toQuestionWithID: id)
         viewModel.addRubricLevel(toQuestionWithID: id)
-        viewModel.mutate(id) { row in row.rubric[1] = "Median" }
+        viewModel.mutate(id) { row in row.rubric[1].text = "Median" }
         viewModel.deleteRubricLevel(0, fromQuestionWithID: id)
 
-        XCTAssertEqual(viewModel.question(withID: id)?.rubric, ["Median", "High", "More 3", "More 4"])
+        XCTAssertEqual(viewModel.question(withID: id)?.rubric.map(\.text), ["Median", "High", "More 3", "More 4"])
     }
 
     @MainActor
@@ -363,4 +363,4 @@ extension XCTestCase {
         }
         return value.reduce(into: [String: Any]()) { $0[$1.key] = convert($1.value) }
     }
-}
+

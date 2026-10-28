@@ -28,10 +28,56 @@ enum JevQuestionType: String, Codable, Sendable, CaseIterable, Hashable {
 
 /// One option of a choice question: a short key and what it covers.
 struct JevOption: Hashable, Sendable, Codable, Identifiable {
+    let id: UUID
     let name: String
     let description: String
 
-    var id: String { name }
+    init(name: String, description: String, id: UUID = UUID()) {
+        self.id = id
+        self.name = name
+        self.description = description
+    }
+
+    // Migration: older stored trials have no "id" key for their options.
+    enum CodingKeys: String, CodingKey { case id, name, description }
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.name = try container.decode(String.self, forKey: .name)
+        self.description = try container.decode(String.self, forKey: .description)
+        self.id = (try? container.decode(UUID.self, forKey: .id)) ?? UUID()
+    }
+}
+
+/// One level of a score rubric.
+struct JevRubricLevel: Hashable, Sendable, Codable, Identifiable {
+    let id: UUID
+    var text: String
+
+    init(text: String, id: UUID = UUID()) {
+        self.id = id
+        self.text = text
+    }
+
+    enum CodingKeys: String, CodingKey { case id, text }
+
+    // Migration: older stored trials keep the rubric as plain strings.
+    init(from decoder: Decoder) throws {
+        if let single = try? decoder.singleValueContainer(),
+           let str = try? single.decode(String.self) {
+            self.id = UUID()
+            self.text = str
+            return
+        }
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.text = try container.decode(String.self, forKey: .text)
+        self.id = (try? container.decode(UUID.self, forKey: .id)) ?? UUID()
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(text, forKey: .text)
+    }
 }
 
 /// One typed question to evaluate against a state.
@@ -43,21 +89,48 @@ struct JevQuestion: Identifiable, Hashable, Sendable, Codable {
     var instructions: String
     /// For choice: the options. For score: the rubric, lowest first. For boolean: empty.
     var options: [JevOption]
-    /// For score: descriptions of each rubric level, as plain strings.
-    var rubric: [String]
+    /// For score: descriptions of each rubric level, lowest first.
+    var rubric: [JevRubricLevel]
 
     init(
         id: UUID = UUID(),
         type: JevQuestionType,
         instructions: String,
         options: [JevOption] = [],
-        rubric: [String] = []
+        rubric: [JevRubricLevel] = []
     ) {
         self.id = id
         self.type = type
         self.instructions = instructions
         self.options = options
         self.rubric = rubric
+    }
+
+    enum CodingKeys: String, CodingKey { case id, type, instructions, options, rubric }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(UUID.self, forKey: .id)
+        self.type = try container.decode(JevQuestionType.self, forKey: .type)
+        self.instructions = try container.decode(String.self, forKey: .instructions)
+        self.options = (try? container.decode([JevOption].self, forKey: .options)) ?? []
+        // Migration: older stored trials keep the rubric as plain strings.
+        if let levels = try? container.decode([JevRubricLevel].self, forKey: .rubric) {
+            self.rubric = levels
+        } else if let strings = try? container.decode([String].self, forKey: .rubric) {
+            self.rubric = strings.map { JevRubricLevel(text: $0) }
+        } else {
+            self.rubric = []
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(type, forKey: .type)
+        try container.encode(instructions, forKey: .instructions)
+        try container.encode(options, forKey: .options)
+        try container.encode(rubric, forKey: .rubric)
     }
 
     // MARK: Wire shapes, from the OpenCode and TypeSafe API references.
@@ -80,7 +153,7 @@ struct JevQuestion: Identifiable, Hashable, Sendable, Codable {
             }
             question["criteria"] = .object(Dictionary(entries, uniquingKeysWith: { first, _ in first }))
         case .score:
-            question["criteria"] = .array(rubric.map { .string($0) })
+            question["criteria"] = .array(rubric.map { .string($0.text) })
         }
         return question
     }
@@ -227,7 +300,7 @@ enum JevQuestionSet {
         JevQuestion(
             type: .score,
             instructions: "How frustrated is the customer?",
-            rubric: ["Calm", "Frustrated", "Very angry"]
+            rubric: [JevRubricLevel(text: "Calm"), JevRubricLevel(text: "Frustrated"), JevRubricLevel(text: "Very angry")]
         )
     ]
 

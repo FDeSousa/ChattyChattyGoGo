@@ -100,6 +100,7 @@ struct JevTrialEditorView: View {
     }
 
     var body: some View {
+        let _ = viewModel.revision
         Form {
             subjectSection
             questionsSection
@@ -206,6 +207,7 @@ private struct JevQuestionEditor: View {
     }
 
     var body: some View {
+        let _ = viewModel.revision
         VStack(alignment: .leading, spacing: 10) {
             Picker("Type", selection: typeBinding) {
                 ForEach(JevQuestionType.allCases, id: \.self) { type in
@@ -246,17 +248,17 @@ private struct JevQuestionEditor: View {
 
     private func optionsEditor(question: JevQuestion) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            ForEach(Array(question.options.enumerated()), id: \.offset) { index, _ in
+            ForEach(question.options) { option in
                 VStack(alignment: .leading, spacing: 3) {
-                    TextField("Option key", text: optionNameBinding(index))
+                    TextField("Option key", text: optionNameBinding(option.id))
                         .font(.subheadline.weight(.medium))
-                    TextField("What it covers", text: optionDescriptionBinding(index))
+                    TextField("What it covers", text: optionDescriptionBinding(option.id))
                         .font(.caption)
                 }
                 .padding(.vertical, 2)
                 .overlay(alignment: .trailing) {
                     Button {
-                        viewModel.deleteOption(at: index, fromQuestionWithID: questionID)
+                        viewModel.deleteOption(withID: option.id, fromQuestionWithID: questionID)
                     } label: {
                         Image(systemName: "minus.circle.fill")
                             .foregroundStyle(.red)
@@ -276,7 +278,7 @@ private struct JevQuestionEditor: View {
 
     private func rubricEditor(question: JevQuestion) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            ForEach(Array(question.rubric.enumerated()), id: \.offset) { index, _ in
+            ForEach(Array(question.rubric.enumerated()), id: \.element.id) { index, level in
                 HStack {
                     Text("\(index)")
                         .font(.caption.monospacedDigit())
@@ -305,33 +307,40 @@ private struct JevQuestionEditor: View {
         }
     }
 
-    private func optionNameBinding(_ index: Int) -> Binding<String> {
+    private func indexOfOption(_ optionID: UUID, in row: JevQuestion) -> Int? {
+        row.options.firstIndex(where: { $0.id == optionID })
+    }
+
+    private func optionNameBinding(_ optionID: UUID) -> Binding<String> {
         Binding(
             get: {
                 let row = question
-                return index < row.options.count ? row.options[index].name : ""
+                guard let index = indexOfOption(optionID, in: row), index < row.options.count else { return "" }
+                return row.options[index].name
             },
             set: { text in
                 mutate { row in
-                    guard index < row.options.count else { return }
+                    guard let index = indexOfOption(optionID, in: row), index < row.options.count else { return }
                     let current = row.options[index]
-                    row.options[index] = JevOption(name: text, description: current.description)
+                    // Preserve the option's stable id across renames.
+                    row.options[index] = JevOption(name: text, description: current.description, id: current.id)
                 }
             }
         )
     }
 
-    private func optionDescriptionBinding(_ index: Int) -> Binding<String> {
+    private func optionDescriptionBinding(_ optionID: UUID) -> Binding<String> {
         Binding(
             get: {
                 let row = question
-                return index < row.options.count ? row.options[index].description : ""
+                guard let index = indexOfOption(optionID, in: row), index < row.options.count else { return "" }
+                return row.options[index].description
             },
             set: { text in
                 mutate { row in
-                    guard index < row.options.count else { return }
+                    guard let index = indexOfOption(optionID, in: row), index < row.options.count else { return }
                     let current = row.options[index]
-                    row.options[index] = JevOption(name: current.name, description: text)
+                    row.options[index] = JevOption(name: current.name, description: text, id: current.id)
                 }
             }
         )
@@ -341,12 +350,12 @@ private struct JevQuestionEditor: View {
         Binding(
             get: {
                 let row = question
-                return index < row.rubric.count ? row.rubric[index] : ""
+                return index < row.rubric.count ? row.rubric[index].text : ""
             },
             set: { text in
                 mutate { row in
                     guard index < row.rubric.count else { return }
-                    row.rubric[index] = text
+                    row.rubric[index].text = text
                 }
             }
         )
