@@ -364,3 +364,4 @@ extension XCTestCase {
         return value.reduce(into: [String: Any]()) { $0[$1.key] = convert($1.value) }
     }
 
+}

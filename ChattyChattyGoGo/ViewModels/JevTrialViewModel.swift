@@ -121,6 +121,12 @@ final class JevTrialViewModel: Identifiable {
         }
     }
 
+    func deleteRubricLevel(withID levelID: UUID, fromQuestionWithID id: UUID) {
+        mutate(id) { question in
+            question.rubric.removeAll { $0.id == levelID }
+        }
+    }
+
     func deleteRubricLevel(_ index: Int, fromQuestionWithID id: UUID) {
         mutate(id) { question in
             guard index < question.rubric.count else { return }

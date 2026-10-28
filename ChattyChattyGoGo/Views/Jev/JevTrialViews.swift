@@ -186,6 +186,68 @@ struct JevTrialEditorView: View {
     }
 }
 
+/// One editable option row. Kept as its own view so SwiftUI does not reuse a row's
+/// button actions across different options during array mutations.
+private struct JevOptionRow: View {
+    let optionID: UUID
+    let questionID: UUID
+    let canDelete: Bool
+    let viewModel: JevTrialViewModel
+    @Binding var nameBinding: String
+    @Binding var descriptionBinding: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                TextField("Option key", text: $nameBinding)
+                    .font(.subheadline.weight(.medium))
+                TextField("What it covers", text: $descriptionBinding)
+                    .font(.caption)
+            }
+            Button {
+                viewModel.deleteOption(withID: optionID, fromQuestionWithID: questionID)
+            } label: {
+                Image(systemName: "minus.circle.fill")
+                    .foregroundStyle(.red)
+                    .frame(width: 32, height: 32)
+            }
+            .labelStyle(.iconOnly)
+            .disabled(!canDelete)
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+/// One editable rubric row.
+private struct JevRubricRow: View {
+    let levelID: UUID
+    let index: Int
+    let questionID: UUID
+    let canDelete: Bool
+    let viewModel: JevTrialViewModel
+    @Binding var textBinding: String
+
+    var body: some View {
+        HStack {
+            Text("\(index)")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 16, alignment: .leading)
+            TextField("Describe level \(index)", text: $textBinding)
+            Button {
+                viewModel.deleteRubricLevel(withID: levelID, fromQuestionWithID: questionID)
+            } label: {
+                Image(systemName: "minus.circle.fill")
+                    .foregroundStyle(.red)
+                    .frame(width: 32, height: 32)
+            }
+            .labelStyle(.iconOnly)
+            .disabled(!canDelete)
+        }
+        .padding(.vertical, 2)
+    }
+}
+
 /// One question, editable.
 ///
 /// All writes go through the view model's `mutate`, which resolves the row **by id
@@ -249,23 +311,14 @@ private struct JevQuestionEditor: View {
     private func optionsEditor(question: JevQuestion) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(question.options) { option in
-                VStack(alignment: .leading, spacing: 3) {
-                    TextField("Option key", text: optionNameBinding(option.id))
-                        .font(.subheadline.weight(.medium))
-                    TextField("What it covers", text: optionDescriptionBinding(option.id))
-                        .font(.caption)
-                }
-                .padding(.vertical, 2)
-                .overlay(alignment: .trailing) {
-                    Button {
-                        viewModel.deleteOption(withID: option.id, fromQuestionWithID: questionID)
-                    } label: {
-                        Image(systemName: "minus.circle.fill")
-                            .foregroundStyle(.red)
-                    }
-                    .labelStyle(.iconOnly)
-                    .disabled(question.options.count < 3)
-                }
+                JevOptionRow(
+                    optionID: option.id,
+                    questionID: questionID,
+                    canDelete: question.options.count >= 3,
+                    viewModel: viewModel,
+                    nameBinding: optionNameBinding(option.id),
+                    descriptionBinding: optionDescriptionBinding(option.id)
+                )
             }
 
             Button {
@@ -273,30 +326,21 @@ private struct JevQuestionEditor: View {
             } label: {
                 Label("Add option", systemImage: "plus.circle")
             }
+            .buttonStyle(.bordered)
         }
     }
 
     private func rubricEditor(question: JevQuestion) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             ForEach(Array(question.rubric.enumerated()), id: \.element.id) { index, level in
-                HStack {
-                    Text("\(index)")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                        .frame(width: 16, alignment: .leading)
-                    TextField("Describe level \(index)", text: rubricBinding(index))
-                }
-                .padding(.vertical, 2)
-                .overlay(alignment: .trailing) {
-                    Button {
-                        viewModel.deleteRubricLevel(index, fromQuestionWithID: questionID)
-                    } label: {
-                        Image(systemName: "minus.circle.fill")
-                            .foregroundStyle(.red)
-                    }
-                    .labelStyle(.iconOnly)
-                    .disabled(question.rubric.count < 3)
-                }
+                JevRubricRow(
+                    levelID: level.id,
+                    index: index,
+                    questionID: questionID,
+                    canDelete: question.rubric.count >= 3,
+                    viewModel: viewModel,
+                    textBinding: rubricBinding(index)
+                )
             }
 
             Button {
@@ -304,6 +348,7 @@ private struct JevQuestionEditor: View {
             } label: {
                 Label("Add level", systemImage: "plus.circle")
             }
+            .buttonStyle(.bordered)
         }
     }
 
