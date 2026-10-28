@@ -1,0 +1,1 @@
+/Users/filipedesousa/Projects/OpenCodeMobile/ChattyChattyGoGo/Models/ChatHelpers.swift
