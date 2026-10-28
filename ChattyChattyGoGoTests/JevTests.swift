@@ -342,6 +342,24 @@ final class JevTests: XCTestCase {
         XCTAssertEqual(trial.questions.count, 1)
         XCTAssertNil(viewModel.question(withID: secondID))
     }
+
+    @MainActor
+    func testDeleteOptionByIdRemovesOne() throws {
+        let container = try ModelContainer(for: Persistence.schema, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let trial = JevTrialFactory.make(in: container.mainContext)
+        let vm = JevTrialViewModel(trial: trial)  // unused but ok
+        let choiceID = try XCTUnwrap(trial.questions.first(where: { $0.type == .choice })?.id)
+        let before = trial.questions.first(where: { $0.id == choiceID })!.options.map(\.name)
+        print("BEFORE: \(before)")
+        let targetID = try XCTUnwrap(trial.questions.first(where: { $0.id == choiceID })?.options.first?.id)
+        trial.deleteOption(withID: targetID, fromQuestionWithID: choiceID)
+        let after = trial.questions.first(where: { $0.id == choiceID })!.options.map(\.name)
+        print("AFTER: \(after)")
+        XCTAssertEqual(after.count, before.count - 1)
+        XCTAssertFalse(after.contains(before[0]))
+    }
+
+
 }
 
 // MARK: - Wire flattening
@@ -365,3 +383,6 @@ extension XCTestCase {
     }
 
 }
+
+
+

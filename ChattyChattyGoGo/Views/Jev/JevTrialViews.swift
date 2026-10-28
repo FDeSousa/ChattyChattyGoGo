@@ -203,7 +203,9 @@ private struct JevOptionRow: View {
             } label: {
                 Image(systemName: "minus.circle.fill")
                     .foregroundStyle(.red)
-                    .frame(width: 32, height: 32)
+                    .font(.title3)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
             .labelStyle(.iconOnly)
             .disabled(!canDelete)
@@ -314,6 +316,9 @@ private struct JevQuestionEditor: View {
                     descriptionBinding: optionDescriptionBinding(option.id)
                 )
             }
+            .padding(.bottom, 4)
+
+            Divider()
 
             Button {
                 trial.addOption(toQuestionWithID: questionID)
@@ -321,6 +326,7 @@ private struct JevQuestionEditor: View {
                 Label("Add option", systemImage: "plus.circle")
             }
             .buttonStyle(.bordered)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
