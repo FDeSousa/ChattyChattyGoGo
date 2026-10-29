@@ -331,6 +331,27 @@ final class JevTests: XCTestCase {
     }
 
     @MainActor
+    func testRubricLevelsCanBeDeletedBelowThreeAndAfterAdding() throws {
+        let (trial, viewModel) = try makeEditor()
+        viewModel.addQuestion(type: .score)
+        let questionID = try XCTUnwrap(trial.questions.first?.id)
+
+        let originalLevels = try XCTUnwrap(trial.questions.first?.rubric)
+        trial.deleteRubricLevel(withID: originalLevels[2].id, fromQuestionWithID: questionID)
+        XCTAssertEqual(trial.questions.first?.rubric.map(\.text), ["Low", "Likely"])
+        trial.deleteRubricLevel(withID: try XCTUnwrap(trial.questions.first?.rubric[1].id), fromQuestionWithID: questionID)
+        XCTAssertEqual(trial.questions.first?.rubric.map(\.text), ["Low"])
+        trial.deleteRubricLevel(withID: try XCTUnwrap(trial.questions.first?.rubric[0].id), fromQuestionWithID: questionID)
+        XCTAssertEqual(trial.questions.first?.rubric, [])
+
+        trial.addRubricLevel(toQuestionWithID: questionID)
+        let newLevel = try XCTUnwrap(trial.questions.first?.rubric.first)
+        XCTAssertEqual(newLevel.text, "More 0")
+        trial.deleteRubricLevel(withID: newLevel.id, fromQuestionWithID: questionID)
+        XCTAssertEqual(trial.questions.first?.rubric, [])
+    }
+
+    @MainActor
     func testDeletingAQuestionByItsId() throws {
         let (trial, viewModel) = try makeEditor()
         viewModel.addQuestion(type: .boolean)
@@ -425,5 +446,4 @@ extension XCTestCase {
     }
 
 }
-
 

@@ -30,6 +30,20 @@ struct JevTrialsListView: View {
                 } label: {
                     JevTrialRow(trial: trial)
                 }
+                .swipeActions(edge: .trailing) {
+                    Button(role: .destructive) {
+                        delete(trial)
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                }
+                .contextMenu {
+                    Button(role: .destructive) {
+                        delete(trial)
+                    } label: {
+                        Label("Delete trial", systemImage: "trash")
+                    }
+                }
             }
         }
         .navigationTitle("Jev trials")
@@ -51,6 +65,15 @@ struct JevTrialsListView: View {
             if let newTrial {
                 JevTrialEditorView(trial: newTrial)
             }
+        }
+    }
+
+    private func delete(_ trial: JevTrial) {
+        modelContext.delete(trial)
+        do {
+            try modelContext.save()
+        } catch {
+            print("Could not delete Jev trial: \(error)")
         }
     }
 }
@@ -225,7 +248,6 @@ private struct JevRubricRow: View {
     let levelID: UUID
     let index: Int
     let questionID: UUID
-    let canDelete: Bool
     @Bindable var trial: JevTrial
     @Binding var textBinding: String
 
@@ -245,7 +267,8 @@ private struct JevRubricRow: View {
             }
             .labelStyle(.iconOnly)
             .buttonStyle(.borderless)
-            .disabled(!canDelete)
+            .accessibilityLabel("Remove rubric level \(index)")
+            .accessibilityIdentifier("jev.rubric.remove.\(levelID.uuidString)")
         }
         .padding(.vertical, 2)
     }
@@ -343,7 +366,6 @@ private struct JevQuestionEditor: View {
                     levelID: level.id,
                     index: index,
                     questionID: questionID,
-                    canDelete: question.rubric.count >= 3,
                     trial: trial,
                     textBinding: rubricBinding(index)
                 )

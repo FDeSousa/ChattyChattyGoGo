@@ -90,6 +90,32 @@ final class JevTrialEditorUITests: XCTestCase {
         shot("jev-editor-levels")
     }
 
+    func testRubricLevelsCanBeRemovedBelowThreeAndAfterAdding() {
+        enterTrialEditor()
+
+        let removeLevel2 = app.buttons["Remove rubric level 2"]
+        tap(removeLevel2, scrolls: 10)
+        assertEventuallyRemoved(removeLevel2)
+        XCTAssertTrue(app.buttons["Remove rubric level 1"].waitForExistence(timeout: 5),
+                      "removing the highest level must preserve the others")
+
+        let removeLevel1 = app.buttons["Remove rubric level 1"]
+        tap(removeLevel1, scrolls: 6)
+        assertEventuallyRemoved(removeLevel1)
+        XCTAssertTrue(app.buttons["Remove rubric level 0"].waitForExistence(timeout: 5),
+                      "deletion must remain enabled with one level")
+
+        let removeLevel0 = app.buttons["Remove rubric level 0"]
+        tap(removeLevel0, scrolls: 6)
+        assertEventuallyRemoved(removeLevel0)
+
+        tap(app.buttons["Add level"].firstMatch, scrolls: 6)
+        let newLevel = app.buttons["Remove rubric level 0"]
+        XCTAssertTrue(newLevel.waitForExistence(timeout: 5), "a rubric level can be added after clearing")
+        tap(newLevel, scrolls: 4)
+        assertEventuallyRemoved(newLevel)
+    }
+
     func testAddingOptionsKeepsTheEditorUsable() {
         enterTrialEditor()
 
