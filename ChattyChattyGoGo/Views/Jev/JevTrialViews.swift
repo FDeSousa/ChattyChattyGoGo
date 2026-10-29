@@ -185,7 +185,6 @@ struct JevTrialEditorView: View {
 private struct JevOptionRow: View {
     let optionID: UUID
     let questionID: UUID
-    let canDelete: Bool
     @Bindable var trial: JevTrial
     @Binding var nameBinding: String
     @Binding var descriptionBinding: String
@@ -195,8 +194,10 @@ private struct JevOptionRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 TextField("Option key", text: $nameBinding)
                     .font(.subheadline.weight(.medium))
+                    .accessibilityIdentifier("jev.option.name.\(optionID.uuidString)")
                 TextField("What it covers", text: $descriptionBinding)
                     .font(.caption)
+                    .accessibilityIdentifier("jev.option.description.\(optionID.uuidString)")
             }
             Button {
                 trial.deleteOption(withID: optionID, fromQuestionWithID: questionID)
@@ -208,7 +209,12 @@ private struct JevOptionRow: View {
                     .contentShape(Rectangle())
             }
             .labelStyle(.iconOnly)
-            .disabled(!canDelete)
+            // Multiple buttons live in one Form row; `.automatic` can route a
+            // tap as a row action. Borderless keeps the tapped control's action
+            // independent of its sibling remove buttons.
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Remove option \(nameBinding.isEmpty ? "unnamed" : nameBinding)")
+            .accessibilityIdentifier("jev.option.remove.\(optionID.uuidString)")
         }
         .padding(.vertical, 2)
     }
@@ -238,6 +244,7 @@ private struct JevRubricRow: View {
                     .frame(width: 32, height: 32)
             }
             .labelStyle(.iconOnly)
+            .buttonStyle(.borderless)
             .disabled(!canDelete)
         }
         .padding(.vertical, 2)
@@ -310,7 +317,6 @@ private struct JevQuestionEditor: View {
                 JevOptionRow(
                     optionID: option.id,
                     questionID: questionID,
-                    canDelete: question.options.count >= 3,
                     trial: trial,
                     nameBinding: optionNameBinding(option.id),
                     descriptionBinding: optionDescriptionBinding(option.id)

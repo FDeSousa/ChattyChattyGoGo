@@ -347,16 +347,58 @@ final class JevTests: XCTestCase {
     func testDeleteOptionByIdRemovesOne() throws {
         let container = try ModelContainer(for: Persistence.schema, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
         let trial = JevTrialFactory.make(in: container.mainContext)
-        let vm = JevTrialViewModel(trial: trial)  // unused but ok
         let choiceID = try XCTUnwrap(trial.questions.first(where: { $0.type == .choice })?.id)
         let before = trial.questions.first(where: { $0.id == choiceID })!.options.map(\.name)
-        print("BEFORE: \(before)")
         let targetID = try XCTUnwrap(trial.questions.first(where: { $0.id == choiceID })?.options.first?.id)
         trial.deleteOption(withID: targetID, fromQuestionWithID: choiceID)
         let after = trial.questions.first(where: { $0.id == choiceID })!.options.map(\.name)
-        print("AFTER: \(after)")
         XCTAssertEqual(after.count, before.count - 1)
         XCTAssertFalse(after.contains(before[0]))
+    }
+
+    func testLegacyOptionIDsAreStableAcrossDecodesAndCanBeDeleted() throws {
+        let questionID = "4A2C4DD7-A1C4-42C4-9C1A-8EC087D324AB"
+        let legacyJSON = """
+        {"id":"\(questionID)","type":"choice","instructions":"Which team?","options":[{"name":"returns","description":"Returns"},{"name":"shipping","description":"Shipping"}],"rubric":[]}
+        """
+        let data = Data(legacyJSON.utf8)
+        let firstDecode = try JSONDecoder().decode(JevQuestion.self, from: data)
+        let secondDecode = try JSONDecoder().decode(JevQuestion.self, from: data)
+        let legacyIDs = firstDecode.options.map(\.id)
+
+        XCTAssertEqual(legacyIDs, secondDecode.options.map(\.id), "legacy IDs must not change on each read")
+        XCTAssertEqual(Set(legacyIDs).count, 2, "each legacy row needs its own identity")
+
+        let trial = JevTrial()
+        trial.questions = [firstDecode]
+        trial.deleteOption(withID: legacyIDs[0], fromQuestionWithID: firstDecode.id)
+        XCTAssertEqual(trial.questions.first?.options.map(\.name), ["shipping"])
+    }
+
+    @MainActor
+    func testCanAddAndRemoveChoiceOptionsFromZeroThroughThree() throws {
+        let container = try ModelContainer(for: Persistence.schema, configurations: ModelConfiguration(isStoredInMemoryOnly: true))
+        let trial = JevTrial()
+        container.mainContext.insert(trial)
+        let question = JevQuestion(type: .choice, instructions: "Choose", options: [])
+        trial.questions = [question]
+
+        trial.addOption(toQuestionWithID: question.id)
+        let firstID = try XCTUnwrap(trial.questions.first?.options.first?.id)
+        trial.mutateQuestion(withID: question.id) { row in
+            row.options[0] = JevOption(name: "first", description: "edited", id: firstID)
+        }
+        trial.addOption(toQuestionWithID: question.id)
+        trial.addOption(toQuestionWithID: question.id)
+        XCTAssertEqual(trial.questions.first?.options.map(\.name), ["first", "option2", "option3"])
+
+        let options = try XCTUnwrap(trial.questions.first?.options)
+        trial.deleteOption(withID: options[2].id, fromQuestionWithID: question.id)
+        XCTAssertEqual(trial.questions.first?.options.map(\.name), ["first", "option2"])
+        trial.deleteOption(withID: options[0].id, fromQuestionWithID: question.id)
+        XCTAssertEqual(trial.questions.first?.options.map(\.name), ["option2"])
+        trial.deleteOption(withID: try XCTUnwrap(trial.questions.first?.options.first?.id), fromQuestionWithID: question.id)
+        XCTAssertEqual(trial.questions.first?.options, [])
     }
 
 
@@ -383,6 +425,5 @@ extension XCTestCase {
     }
 
 }
-
 
 

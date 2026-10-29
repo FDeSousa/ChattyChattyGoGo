@@ -48,6 +48,34 @@ struct JevOption: Hashable, Sendable, Codable, Identifiable {
     }
 }
 
+/// Option payload used to migrate trials written before stable option IDs were
+/// part of the stored JSON format.
+private struct DecodedJevOption: Decodable {
+    let id: UUID?
+    let name: String
+    let description: String
+}
+
+/// Rubric payload used to migrate older plain-string rubric entries.
+private struct DecodedJevRubricLevel: Decodable {
+    let id: UUID?
+    let text: String
+
+    private enum CodingKeys: String, CodingKey { case id, text }
+
+    init(from decoder: Decoder) throws {
+        if let single = try? decoder.singleValueContainer(),
+           let text = try? single.decode(String.self) {
+            self.id = nil
+            self.text = text
+            return
+        }
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try? container.decode(UUID.self, forKey: .id)
+        self.text = try container.decode(String.self, forKey: .text)
+    }
+}
+
 /// One level of a score rubric.
 struct JevRubricLevel: Hashable, Sendable, Codable, Identifiable {
     let id: UUID
@@ -110,17 +138,28 @@ struct JevQuestion: Identifiable, Hashable, Sendable, Codable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.id = try container.decode(UUID.self, forKey: .id)
+        let decodedQuestionID = try container.decode(UUID.self, forKey: .id)
+        self.id = decodedQuestionID
         self.type = try container.decode(JevQuestionType.self, forKey: .type)
         self.instructions = try container.decode(String.self, forKey: .instructions)
-        self.options = (try? container.decode([JevOption].self, forKey: .options)) ?? []
-        // Migration: older stored trials keep the rubric as plain strings.
-        if let levels = try? container.decode([JevRubricLevel].self, forKey: .rubric) {
-            self.rubric = levels
-        } else if let strings = try? container.decode([String].self, forKey: .rubric) {
-            self.rubric = strings.map { JevRubricLevel(text: $0) }
-        } else {
-            self.rubric = []
+        // Missing IDs on legacy entries must be deterministic. The questions
+        // property decodes its JSON on every read; random fallback IDs would
+        // change on each read and make a row's delete action miss its target.
+        let storedOptions = (try? container.decode([DecodedJevOption].self, forKey: .options)) ?? []
+        self.options = storedOptions.enumerated().map { index, option in
+            JevOption(
+                name: option.name,
+                description: option.description,
+                id: option.id ?? Self.legacyEntryID(questionID: decodedQuestionID, kind: 1, index: index)
+            )
+        }
+
+        let storedRubric = (try? container.decode([DecodedJevRubricLevel].self, forKey: .rubric)) ?? []
+        self.rubric = storedRubric.enumerated().map { index, level in
+            JevRubricLevel(
+                text: level.text,
+                id: level.id ?? Self.legacyEntryID(questionID: decodedQuestionID, kind: 2, index: index)
+            )
         }
     }
 
@@ -131,6 +170,27 @@ struct JevQuestion: Identifiable, Hashable, Sendable, Codable {
         try container.encode(instructions, forKey: .instructions)
         try container.encode(options, forKey: .options)
         try container.encode(rubric, forKey: .rubric)
+    }
+
+    /// Derive a repeatable per-question, per-kind, per-position ID for a legacy
+    /// item that had no stored identity. New entries always use random UUIDs.
+    private static func legacyEntryID(questionID: UUID, kind: UInt8, index: Int) -> UUID {
+        var bytes = withUnsafeBytes(of: questionID.uuid) { Array($0) }
+        bytes[0] ^= 0xA7
+        bytes[6] = (bytes[6] & 0x0F) | 0x50
+        bytes[8] = (bytes[8] & 0x3F) | 0x80
+        bytes[11] = kind
+        let position = UInt32(truncatingIfNeeded: index)
+        bytes[12] = UInt8((position >> 24) & 0xFF)
+        bytes[13] = UInt8((position >> 16) & 0xFF)
+        bytes[14] = UInt8((position >> 8) & 0xFF)
+        bytes[15] = UInt8(position & 0xFF)
+        return UUID(uuid: (
+            bytes[0], bytes[1], bytes[2], bytes[3],
+            bytes[4], bytes[5], bytes[6], bytes[7],
+            bytes[8], bytes[9], bytes[10], bytes[11],
+            bytes[12], bytes[13], bytes[14], bytes[15]
+        ))
     }
 
     // MARK: Wire shapes, from the OpenCode and TypeSafe API references.
