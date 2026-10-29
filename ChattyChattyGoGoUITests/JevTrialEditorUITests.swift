@@ -183,6 +183,27 @@ final class JevTrialEditorUITests: XCTestCase {
         XCTAssertEqual(returns.value as? String, "None", "the option edited earlier must keep its text")
         shot("jev-editor-rename-survived")
     }
+
+    func testQuestionTypeInfoExplainsTheAvailableAnswers() {
+        enterTrialEditor()
+
+        tap(app.buttons["About Yes / No"], scrolls: 6)
+        XCTAssertTrue(app.staticTexts["How to read the value"].waitForExistence(timeout: 5))
+        tap(app.buttons["Done"])
+
+        tap(app.buttons["About Pick one"], scrolls: 6)
+        XCTAssertTrue(app.staticTexts["Are descriptions weights?"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "There is no numeric weight")
+        ).firstMatch.exists)
+        tap(app.buttons["Done"])
+
+        tap(app.buttons["About Rubric score"], scrolls: 10)
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "The first level is 0")
+        ).firstMatch.waitForExistence(timeout: 5))
+        tap(app.buttons["Done"])
+    }
 }
 
 /// Types over the whole content of a text field.

@@ -11,7 +11,6 @@ struct SettingsView: View {
     @State private var showingAPIKey = false
     @State private var showingModelPicker = false
     @State private var showingInstructions = false
-    @State private var showingUsage = false
     @State private var showingDeleteAll = false
     @State private var exportURL: URL?
     @State private var exportError: String?
@@ -59,9 +58,6 @@ struct SettingsView: View {
             }
             .sheet(isPresented: $showingInstructions) {
                 GlobalInstructionsView()
-            }
-            .sheet(isPresented: $showingUsage) {
-                UsageView()
             }
             .alert("Delete every chat?", isPresented: $showingDeleteAll) {
                 Button("Cancel", role: .cancel) { }

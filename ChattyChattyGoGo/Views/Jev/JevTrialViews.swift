@@ -115,6 +115,7 @@ private struct JevTrialRow: View {
 /// Edits one trial: the subject, the questions, and the Jev id to ask.
 struct JevTrialEditorView: View {
     @Bindable var trial: JevTrial
+    @State private var questionInfoType: JevQuestionType?
 
     var body: some View {
         let _ = trial.revision
@@ -133,6 +134,14 @@ struct JevTrialEditorView: View {
                     Text("Run")
                 }
                 .disabled(trial.questions.isEmpty || trial.state.isEmpty)
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: { questionInfoType != nil },
+            set: { if !$0 { questionInfoType = nil } }
+        )) {
+            if let questionInfoType {
+                JevQuestionTypeInfoView(type: questionInfoType)
             }
         }
     }
@@ -163,7 +172,8 @@ struct JevTrialEditorView: View {
             ForEach(trial.questions) { question in
                 JevQuestionEditor(
                     questionID: question.id,
-                    trial: trial
+                    trial: trial,
+                    onShowTypeInfo: { questionInfoType = $0 }
                 )
             }
             .onDelete { offsets in
@@ -283,6 +293,7 @@ private struct JevRubricRow: View {
 private struct JevQuestionEditor: View {
     let questionID: UUID
     @Bindable var trial: JevTrial
+    let onShowTypeInfo: (JevQuestionType) -> Void
 
     /// The row's current state, read from the trial by id.
     private var question: JevQuestion {
@@ -297,12 +308,26 @@ private struct JevQuestionEditor: View {
     var body: some View {
         let _ = trial.revision
         VStack(alignment: .leading, spacing: 10) {
-            Picker("Type", selection: typeBinding) {
-                ForEach(JevQuestionType.allCases, id: \.self) { type in
-                    Text(type.title).tag(type)
+            HStack(spacing: 8) {
+                Picker("Type", selection: typeBinding) {
+                    ForEach(JevQuestionType.allCases, id: \.self) { type in
+                        Text(type.title).tag(type)
+                    }
                 }
+                .pickerStyle(.segmented)
+
+                Button {
+                    onShowTypeInfo(question.type)
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.title3)
+                        .frame(width: 40, height: 40)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("About \(question.type.title)")
+                .accessibilityIdentifier("jev.question.info.\(question.type.rawValue)")
             }
-            .pickerStyle(.segmented)
 
             TextField("What should Jev answer?", text: instructionsBinding)
 
@@ -432,6 +457,75 @@ private struct JevQuestionEditor: View {
                 }
             }
         )
+    }
+}
+
+/// Contextual help for the selected Jev answer type.
+private struct JevQuestionTypeInfoView: View {
+    @Environment(\.dismiss) private var dismiss
+    let type: JevQuestionType
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("The subject is the material Jev judges. The question tells Jev what to decide about it.")
+                        .font(.body)
+
+                    switch type {
+                    case .boolean:
+                        booleanDetails
+                    case .choice:
+                        choiceDetails
+                    case .score:
+                        scoreDetails
+                    }
+                }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .navigationTitle(type.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var booleanDetails: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("What it does").font(.headline)
+            Text("Jev estimates how likely a statement in your question is true for the subject. Phrase it as one clear claim.")
+            Text("How to read the value").font(.headline)
+            Text("The result is a probability from 0 to 1: 0 means very unlikely, 1 means very likely. The app labels values below 0.5 as No and values of 0.5 or higher as Yes; the number keeps the uncertainty visible.")
+        }
+    }
+
+    private var choiceDetails: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("What it does").font(.headline)
+            Text("Jev chooses the best-fitting option and may return a probability for each option.")
+            Text("Option key").font(.headline)
+            Text("A short, unique name. It is the value Jev returns for the selected option, so keep keys distinct.")
+            Text("What it covers").font(.headline)
+            Text("A plain-language definition of when that option applies. Jev receives this as the option's description to help distinguish the categories.")
+            Text("Are descriptions weights?").font(.headline)
+            Text("No. There is no numeric weight or relevance setting for options; the description defines a category, not its priority. If a policy should affect the decision, state it in the question instructions. That guides Jev but is not a formal weight.")
+        }
+    }
+
+    private var scoreDetails: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("What it does").font(.headline)
+            Text("Jev places the subject on the scale described by your rubric levels.")
+            Text("Order and values").font(.headline)
+            Text("List levels from lowest to highest. The first level is 0, the second is 1, the third is 2, and so on. Jev can return fractional scores between levels (for example, 1.5 between levels 1 and 2).")
+            Text("Each level's text describes that point on the scale; there is no separate weight. Reordering levels changes what the numeric score means.")
+        }
     }
 }
 

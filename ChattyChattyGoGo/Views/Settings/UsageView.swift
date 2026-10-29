@@ -7,7 +7,6 @@ import SwiftUI
 /// this app has used per model. It refreshes itself so it can be left open while the
 /// subscription is being used elsewhere.
 struct UsageView: View {
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
 
     @State private var snapshot: UsageSnapshot?
@@ -18,75 +17,70 @@ struct UsageView: View {
     @State private var allowances: [ModelAllowance] = []
 
     var body: some View {
-        NavigationStack {
-            List {
-                accountSection
-                if !allowances.isEmpty {
-                    modelSection
+        List {
+            accountSection
+            if !allowances.isEmpty {
+                modelSection
+            }
+            if let snapshot {
+                Section {
+                    if let balance = snapshot.balanceUSD {
+                        LabeledContent("Pay-as-you-go balance", value: balance.usdFormatted)
+                    }
+                    ForEach(snapshot.windows) { window in
+                        UsageWindowRow(window: window)
+                    }
+                } header: {
+                    Text("Allowance used")
+                } footer: {
+                    Text("These percentages come from the OpenCode account API and cover your whole plan, wherever you use it. The balance line is shown only when the endpoint reports one, and it is what Jev and pay-as-you-go models draw on.")
                 }
-                if let snapshot {
-                    Section {
-                        if let balance = snapshot.balanceUSD {
-                            LabeledContent("Pay-as-you-go balance", value: balance.usdFormatted)
-                        }
-                        ForEach(snapshot.windows) { window in
-                            UsageWindowRow(window: window)
-                        }
-                    } header: {
-                        Text("Allowance used")
-                    } footer: {
-                        Text("These percentages come from the OpenCode account API and cover your whole plan, wherever you use it. The balance line is shown only when the endpoint reports one, and it is what Jev and pay-as-you-go models draw on.")
-                    }
-                } else if let errorMessage {
-                    Section {
-                        Label(errorMessage, systemImage: "exclamationmark.triangle")
-                            .foregroundStyle(.orange)
-                    }
-                } else {
-                    Section {
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                            Spacer()
-                        }
+            } else if let errorMessage {
+                Section {
+                    Label(errorMessage, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                }
+            } else {
+                Section {
+                    HStack {
+                        Spacer()
+                        ProgressView()
+                        Spacer()
                     }
                 }
             }
-            .navigationTitle("Usage")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
+        }
+        .navigationTitle("Usage")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    load()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button {
-                        load()
-                    } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .disabled(isLoading)
-                    .accessibilityLabel("Refresh usage")
-                }
+                .disabled(isLoading)
+                .accessibilityLabel("Refresh usage")
             }
-            .task {
-                load()
-                loadAllowances()
-                await autoRefreshLoop()
-            }
-            .refreshable {
-                load()
-                loadAllowances()
-            }
-            .onChange(of: autoRefresh) { _, _ in
-                load()
-            }
-            .overlay(alignment: .bottom) {
-                if let lastUpdated {
-                    Text("Updated \(lastUpdated.formatted(date: .omitted, time: .standard))")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .padding(.bottom, 6)
-                }
+        }
+        .task {
+            load()
+            loadAllowances()
+            await autoRefreshLoop()
+        }
+        .refreshable {
+            load()
+            loadAllowances()
+        }
+        .onChange(of: autoRefresh) { _, _ in
+            load()
+        }
+        .overlay(alignment: .bottom) {
+            if let lastUpdated {
+                Text("Updated \(lastUpdated.formatted(date: .omitted, time: .standard))")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .padding(.bottom, 6)
             }
         }
     }
