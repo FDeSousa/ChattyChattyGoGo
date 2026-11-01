@@ -74,6 +74,14 @@ struct ModelInfo: Identifiable, Hashable, Sendable {
     var supportsReasoning: Bool
     /// Whether the model can look at images that are sent with a message.
     var supportsImages: Bool
+    /// Whether the model can accept video attachments.
+    var supportsVideo: Bool
+    /// Whether the model can accept audio attachments.
+    var supportsAudio: Bool
+    /// Whether the model can accept PDF attachments natively (rather than text-extracted).
+    var supportsPDF: Bool
+    /// Whether the model supports tool calling / function calling.
+    var supportsTools: Bool
     /// Set when the provider may use your prompts for training (cheaper tiers).
     var privacyNote: String?
     /// How long the provider keeps the request, from OpenCode's privacy tables.
@@ -88,6 +96,10 @@ struct ModelInfo: Identifiable, Hashable, Sendable {
         bestFor: [String],
         supportsReasoning: Bool = false,
         supportsImages: Bool = false,
+        supportsVideo: Bool = false,
+        supportsAudio: Bool = false,
+        supportsPDF: Bool = false,
+        supportsTools: Bool = false,
         privacyNote: String? = nil
     ) {
         self.id = id
@@ -98,7 +110,33 @@ struct ModelInfo: Identifiable, Hashable, Sendable {
         self.bestFor = bestFor
         self.supportsReasoning = supportsReasoning
         self.supportsImages = supportsImages
+        self.supportsVideo = supportsVideo
+        self.supportsAudio = supportsAudio
+        self.supportsPDF = supportsPDF
+        self.supportsTools = supportsTools
         self.privacyNote = privacyNote
+    }
+
+    /// A human-readable list of the input modalities this model accepts.
+    var inputModalities: [String] {
+        var modalities = ["Text"]
+        if supportsImages { modalities.append("Image") }
+        if supportsVideo { modalities.append("Video") }
+        if supportsAudio { modalities.append("Audio") }
+        if supportsPDF { modalities.append("PDF") }
+        return modalities
+    }
+
+    /// A short badge-style summary of capabilities for the model picker.
+    var capabilityLabels: [(label: String, systemImage: String)] {
+        var labels: [(label: String, systemImage: String)] = []
+        if supportsReasoning { labels.append(("Thinking", "brain.head.profile")) }
+        if supportsImages { labels.append(("Images", "photo")) }
+        if supportsVideo { labels.append(("Video", "video")) }
+        if supportsAudio { labels.append(("Audio", "waveform")) }
+        if supportsPDF { labels.append(("PDF", "document")) }
+        if supportsTools { labels.append(("Tools", "wrench.and.screwdriver")) }
+        return labels
     }
 }
 
@@ -222,7 +260,10 @@ enum ModelCatalog {
             displayName: "GLM-5.3 Flash",
             family: .openAIChat,
             summary: "Flash-sized GLM 5.3, built for instant answers.",
-            bestFor: ["Quick answers", "Simple tasks"]
+            bestFor: ["Quick answers", "Simple tasks", "Multimodal input"],
+            supportsImages: true,
+            supportsVideo: true,
+            supportsTools: true
         ),
         ModelInfo(
             id: "glm-5.1",
@@ -255,9 +296,11 @@ enum ModelCatalog {
             displayName: "GPT-6 Luna",
             family: .openAIResponses,
             summary: "OpenAI's strongest reasoning model in the Go lineup. Careful, structured answers.",
-            bestFor: ["Careful reasoning", "Structured answers", "Hard problems"],
+            bestFor: ["Careful reasoning", "Structured answers", "Hard problems", "Document review"],
             supportsReasoning: true,
-            supportsImages: true
+            supportsImages: true,
+            supportsPDF: true,
+            supportsTools: true
         ),
         ModelInfo(
             id: "gpt-5.6-luna",
@@ -370,6 +413,15 @@ enum ModelCatalog {
             privacyNote: "Free tier: OpenCode may train on request data unless free endpoints are allowed in the workspace's Privacy settings."
         ),
         ModelInfo(
+            id: "nemotron-3.5-super-vl",
+            displayName: "Nemotron 3.5 Super VL",
+            family: .openAIChat,
+            summary: "NVIDIA's vision-language model. Handles text, images and tool use.",
+            bestFor: ["Image understanding", "Visual reasoning", "Tool use"],
+            supportsImages: true,
+            supportsTools: true
+        ),
+        ModelInfo(
             id: "mimo-v2.6-pro",
             displayName: "MiMo-V2.6 Pro",
             family: .openAIChat,
@@ -466,9 +518,13 @@ enum ModelCatalog {
             displayName: "Gemini 4 Argon",
             family: .google,
             summary: "Google's Gemini 4, currently half price through OpenCode. Very large context and strong general reasoning.",
-            bestFor: ["Very long documents", "General assistance", "Images"],
+            bestFor: ["Very long documents", "General assistance", "Images", "Video", "Audio"],
             supportsReasoning: true,
-            supportsImages: true
+            supportsImages: true,
+            supportsVideo: true,
+            supportsAudio: true,
+            supportsPDF: true,
+            supportsTools: true
         ),
         ModelInfo(
             id: "gemini-4-argon-contributor",
@@ -477,9 +533,13 @@ enum ModelCatalog {
             family: .google,
             service: .retired,
             summary: "Google's Gemini 4 on the contributor tier. Very large context and strong general reasoning.",
-            bestFor: ["Very long documents", "General assistance"],
+            bestFor: ["Very long documents", "General assistance", "Images", "Video", "Audio"],
             supportsReasoning: true,
             supportsImages: true,
+            supportsVideo: true,
+            supportsAudio: true,
+            supportsPDF: true,
+            supportsTools: true,
             privacyNote: "Contributor tier: your prompts may be used to improve Meta/Google models."
         ),
         ModelInfo(

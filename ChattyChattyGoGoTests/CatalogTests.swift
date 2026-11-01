@@ -135,4 +135,38 @@ final class MarkdownParserTests: XCTestCase {
         let blocks = MarkdownParser.blocks(from: "just words")
         XCTAssertEqual(blocks.count, 1)
     }
+
+    func testTableRowsProduceATableBlock() {
+        let text = """
+        Here is a summary:
+
+        | Feature | Support |
+        |---------|---------|
+        | Images  | yes     |
+        | Video   | no      |
+
+        And a closing line.
+        """
+        let blocks = MarkdownParser.blocks(from: text)
+        let tables = blocks.compactMap { block -> [[String]]? in
+            if case .table(let rows) = block.kind { return rows }
+            return nil
+        }
+        XCTAssertEqual(tables.count, 1)
+        let rows = try! XCTUnwrap(tables.first)
+        XCTAssertEqual(rows.count, 3)
+        XCTAssertEqual(rows[0], ["Feature", "Support"])
+        XCTAssertEqual(rows[1], ["Images", "yes"])
+        XCTAssertEqual(rows[2], ["Video", "no"])
+    }
+
+    func testTableBlockIsDroppedWhenRowsDoNotFollow() {
+        let blocks = MarkdownParser.blocks(from: "| not | a | table |")
+        // A single stray pipe row is still a table block with one row.
+        let tables = blocks.compactMap { block -> Int? in
+            if case .table = block.kind { return 1 }
+            return nil
+        }
+        XCTAssertEqual(tables.count, 1)
+    }
 }

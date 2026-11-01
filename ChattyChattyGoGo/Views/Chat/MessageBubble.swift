@@ -220,7 +220,11 @@ struct AttachmentPreview: View {
     }
 
     private var documents: [Attachment] {
-        attachments.filter { $0.kind != .image }
+        attachments.filter { $0.kind != .image && $0.kind != .video && $0.kind != .audio }
+    }
+
+    private var richerAttachments: [Attachment] {
+        attachments.filter { $0.kind == .video || $0.kind == .audio }
     }
 
     var body: some View {
@@ -249,6 +253,19 @@ struct AttachmentPreview: View {
             ForEach(documents) { attachment in
                 HStack(spacing: 6) {
                     Image(systemName: "doc.text.fill")
+                        .foregroundStyle(Color.accentColor)
+                    Text(attachment.name)
+                        .font(.caption)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(Color.chatSecondaryBackground, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+
+            ForEach(richerAttachments) { attachment in
+                HStack(spacing: 6) {
+                    Image(systemName: attachment.kind == .audio ? "waveform" : "video.fill")
                         .foregroundStyle(Color.accentColor)
                     Text(attachment.name)
                         .font(.caption)

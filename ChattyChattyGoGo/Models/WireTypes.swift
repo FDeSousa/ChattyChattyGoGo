@@ -41,6 +41,8 @@ enum ReasoningLevel: String, CaseIterable, Identifiable, Sendable {
 enum WireAttachment: Sendable, Hashable {
     case image(mimeType: String, base64: String)
     case document(text: String)
+    case video(mimeType: String, base64: String)
+    case audio(mimeType: String, base64: String)
 
     var isImage: Bool {
         if case .image = self { return true }

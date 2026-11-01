@@ -27,12 +27,15 @@ struct PendingAttachment: Identifiable {
 struct ComposerBar: View {
     @Binding var text: String
     var attachments: [PendingAttachment] = []
+    /// The model the chat is talking to, used to filter offered attachment kinds.
+    var model: ModelInfo? = nil
     var isStreaming: Bool
     var onSend: () -> Void
     var onStop: () -> Void
     var onRemoveAttachment: ((PendingAttachment) -> Void)?
     var onAttachPhoto: (() -> Void)?
     var onAttachFile: (() -> Void)?
+    var onAttachVideo: (() -> Void)? = nil
     /// Set when the model cannot read the given attachment.
     var attachmentWarning: String? = nil
 
@@ -41,6 +44,10 @@ struct ComposerBar: View {
     private var canSend: Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
     }
+
+    /// Documents are text-extracted before they reach any model, so the option
+    /// stays offered for every model.
+    private var offersDocuments: Bool { true }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -56,7 +63,7 @@ struct ComposerBar: View {
             }
 
             HStack(alignment: .bottom, spacing: 10) {
-                if onAttachPhoto != nil || onAttachFile != nil {
+                if onAttachPhoto != nil || onAttachFile != nil || onAttachVideo != nil {
                     Menu {
                         if let onAttachPhoto {
                             Button {
@@ -70,6 +77,14 @@ struct ComposerBar: View {
                                 onAttachFile()
                             } label: {
                                 Label("Document", systemImage: "doc")
+                            }
+                            .disabled(offersDocuments == false)
+                        }
+                        if let onAttachVideo {
+                            Button {
+                                onAttachVideo()
+                            } label: {
+                                Label("Video", systemImage: "video.fill")
                             }
                         }
                     } label: {
@@ -145,7 +160,7 @@ struct ComposerBar: View {
                     .frame(width: 32, height: 32)
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             } else {
-                Image(systemName: "doc.text.fill")
+                Image(systemName: iconFor(attachment.kind))
                     .font(.system(size: 15))
                     .foregroundStyle(.secondary)
                     .frame(width: 32, height: 32)
@@ -156,7 +171,7 @@ struct ComposerBar: View {
                 Text(attachment.name)
                     .font(.caption)
                     .lineLimit(1)
-                Text(attachment.kind == .image ? attachment.sizeLabel : "Text extracted")
+                Text(labelFor(attachment.kind))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -174,5 +189,23 @@ struct ComposerBar: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func iconFor(_ kind: Attachment.Kind) -> String {
+        switch kind {
+        case .image: "photo.fill"
+        case .video: "video.fill"
+        case .audio: "waveform"
+        case .document: "doc.text.fill"
+        }
+    }
+
+    private func labelFor(_ kind: Attachment.Kind) -> String {
+        switch kind {
+        case .image: "Image"
+        case .video: "Video"
+        case .audio: "Audio"
+        case .document: "Text extracted"
+        }
     }
 }

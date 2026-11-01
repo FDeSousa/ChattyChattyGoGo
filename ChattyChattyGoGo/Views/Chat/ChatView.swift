@@ -151,6 +151,7 @@ struct ChatView: View {
                 ComposerBar(
                     text: $viewModel.draft,
                     attachments: pendingAttachments,
+                    model: viewModel.model,
                     isStreaming: viewModel.isStreaming,
                     onSend: {
                         viewModel.send(attachments: pendingAttachments)
@@ -384,10 +385,24 @@ struct ChatView: View {
     /// A warning to show above the composer, if there is anything worth saying.
     private var attachmentWarning: String? {
         if let attachmentError { return attachmentError }
-        if pendingAttachments.contains(where: { $0.kind == .image }),
-           let model = viewModel.model,
-           !model.supportsImages {
-            return "\(model.displayName) may not understand images. The text is still sent."
+        guard let model = viewModel.model else { return nil }
+        for attachment in pendingAttachments {
+            switch attachment.kind {
+            case .image where !model.supportsImages:
+                return "\(model.displayName) may not understand images. The text is still sent."
+            case .video where !model.supportsVideo:
+                return "\(model.displayName) does not accept video. It will not be sent — remove it or switch models."
+            case .audio where !model.supportsAudio:
+                return "\(model.displayName) does not accept audio. It will not be sent — remove it or switch models."
+            case .document:
+                // PDFs are handled like any document (text extraction) by default.
+                // PDF-native models can read the whole document; others just get a warning.
+                if attachment.mimeType == "application/pdf", !model.supportsPDF {
+                    return "\(model.displayName) does not read PDFs natively - the text will be extracted instead."
+                }
+            default:
+                continue
+            }
         }
         return nil
     }

@@ -402,6 +402,21 @@ struct OpenCodeService: @unchecked Sendable {
                     "type": .string("text"),
                     "text": .string(text)
                 ]))
+            case .video(let mimeType, let base64):
+                parts.append(.object([
+                    "type": .string("video_url"),
+                    "video_url": .object([
+                        "url": .string("data:\(mimeType);base64,\(base64)")
+                    ])
+                ]))
+            case .audio(let mimeType, let base64):
+                parts.append(.object([
+                    "type": .string("input_audio"),
+                    "input_audio": .object([
+                        "data": .string(base64),
+                        "format": .string(mimeType)
+                    ])
+                ]))
             }
         }
         return .array(parts)
@@ -427,6 +442,19 @@ struct OpenCodeService: @unchecked Sendable {
                     parts.append(.object([
                         "type": .string("input_text"),
                         "text": .string(text)
+                    ]))
+                case .video(let mimeType, let base64):
+                    parts.append(.object([
+                        "type": .string("input_video"),
+                        "video_url": .string("data:\(mimeType);base64,\(base64)")
+                    ]))
+                case .audio(let mimeType, let base64):
+                    parts.append(.object([
+                        "type": .string("input_audio"),
+                        "input_audio": .object([
+                            "data": .string(base64),
+                            "format": .string(mimeType)
+                        ])
                     ]))
                 }
             }
@@ -478,6 +506,13 @@ struct OpenCodeService: @unchecked Sendable {
                         "type": .string("text"),
                         "text": .string(text)
                     ]))
+                case .video, .audio:
+                    // Anthropic has no video/audio input blocks; the attachment
+                    // presence is mentioned so the model is aware of the attempt.
+                    blocks.append(.object([
+                        "type": .string("text"),
+                        "text": .string("[video or audio attachment not supported by this provider]")
+                    ]))
                 }
             }
             messages.append(.object([
@@ -523,6 +558,13 @@ struct OpenCodeService: @unchecked Sendable {
                     ]))
                 case .document(let text):
                     parts.append(.object(["text": .string(text)]))
+                case .video(let mimeType, let base64), .audio(let mimeType, let base64):
+                    parts.append(.object([
+                        "inlineData": .object([
+                            "mimeType": .string(mimeType),
+                            "data": .string(base64)
+                        ])
+                    ]))
                 }
             }
             contents.append(.object([

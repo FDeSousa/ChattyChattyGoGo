@@ -7,6 +7,8 @@ final class Attachment {
     enum Kind: String {
         case image
         case document
+        case video
+        case audio
     }
 
     var id: UUID = UUID()
@@ -49,6 +51,10 @@ final class Attachment {
             return .image(mimeType: mimeType, base64: data?.base64EncodedString() ?? "")
         case .document:
             return .document(text: extractedText)
+        case .video:
+            return .video(mimeType: mimeType, base64: data?.base64EncodedString() ?? "")
+        case .audio:
+            return .audio(mimeType: mimeType, base64: data?.base64EncodedString() ?? "")
         }
     }
 }

@@ -16,6 +16,8 @@ struct MarkdownText: View {
                     ProseBlock(text: value)
                 case .code(let code, let language):
                     CodeBlockView(code: code, language: language, isStreaming: isStreaming)
+                case .table(let rows):
+                    TableBlock(rows: rows)
                 }
             }
         }
@@ -82,11 +84,11 @@ private struct ProseBlock: View {
             ForEach(pieces) { piece in
                 switch piece {
                 case .paragraph(let value):
-                    Text(attributed(value))
+                    Text(Self.attributed(value))
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                 case .heading(let value, let level):
-                    Text(attributed(value))
+                    Text(Self.attributed(value))
                         .font(.system(.headline, design: .default, weight: .semibold))
                         .padding(.top, level <= 2 ? 4 : 0)
                         .textSelection(.enabled)
@@ -96,7 +98,7 @@ private struct ProseBlock: View {
                             HStack(alignment: .firstTextBaseline, spacing: 8) {
                                 Text("•")
                                     .foregroundStyle(.secondary)
-                                Text(attributed(value))
+                                Text(Self.attributed(value))
                                     .textSelection(.enabled)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
@@ -130,12 +132,45 @@ private struct ProseBlock: View {
         return nil
     }
 
-    private func attributed(_ value: String) -> AttributedString {
+    /// Converts a string to an `AttributedString`, interpreting inline markdown.
+    static func attributed(_ value: String) -> AttributedString {
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
         if let attributed = try? AttributedString(markdown: value, options: options) {
             return attributed
         }
         return AttributedString(value)
+    }
+}
+
+/// Renders a markdown table. Columns are left-aligned; the first row is the header.
+private struct TableBlock: View {
+    let rows: [[String]]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { rowIndex, row in
+                HStack(spacing: 0) {
+                    ForEach(Array(row.enumerated()), id: \.offset) { colIndex, cell in
+                        Text(ProseBlock.attributed(cell))
+                            .font(.caption)
+                            .foregroundStyle(rowIndex == 0 ? .primary : .secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if colIndex < row.count - 1 {
+                            Spacer(minLength: 8)
+                        }
+                    }
+                }
+                .padding(.vertical, 3)
+                .padding(.horizontal, 8)
+                if rowIndex == 0 && rows.count > 1 {
+                    Divider()
+                        .padding(.horizontal, 8)
+                }
+            }
+        }
+        .background(Color(.tertiarySystemBackground))
+        .cornerRadius(6)
+        .padding(.vertical, 4)
     }
 }
 
@@ -158,6 +193,11 @@ private struct ProseBlock: View {
         let greeting = "Hello, iPhone 17 Pro Max"
         print(greeting)
         ```
+
+        | Feature | Yes / No | Pick one | Rubric score |
+        |---------|----------|----------|--------------|
+        | Returns | Yes      | Option A | 2.5          |
+        | Shipping| No       | Option B | 1.0          |
         """)
         .padding()
     }

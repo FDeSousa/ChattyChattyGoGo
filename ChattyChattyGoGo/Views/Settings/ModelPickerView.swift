@@ -299,6 +299,30 @@ struct ModelRow: View {
                             .foregroundStyle(.secondary)
                             .accessibilityLabel("Can read images")
                     }
+                    if model.supportsVideo {
+                        Image(systemName: "video")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("Can read video")
+                    }
+                    if model.supportsAudio {
+                        Image(systemName: "waveform")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("Can read audio")
+                    }
+                    if model.supportsPDF {
+                        Image(systemName: "doc")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("Can read PDFs")
+                    }
+                    if model.supportsTools {
+                        Image(systemName: "wrench.and.screwdriver")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("Supports tool use")
+                    }
                     if isUnavailable {
                         Image(systemName: "lock.fill")
                             .font(.caption2)
@@ -311,6 +335,10 @@ struct ModelRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+
+                Text("Reads \(model.inputModalities.joined(separator: ", "))")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
 
                 if !model.bestFor.isEmpty {
                     Text(model.bestFor.joined(separator: " · "))
