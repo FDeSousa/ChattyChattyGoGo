@@ -89,4 +89,46 @@ final class SSEParserTests: XCTestCase {
         var parser = SSEParser(family: .openAIChat)
         XCTAssertNil(parser.consume(line: "data: {not json"))
     }
+
+    func testOpenAIChatParsesStreamedFunctionCallArguments() {
+        var parser = SSEParser(family: .openAIChat)
+        let first = #"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call-1","type":"function","function":{"name":"calculator","arguments":"{\"expression\":\"2"}}]}}]}"#
+        let second = #"data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"*3\"}"}}]},"finish_reason":"tool_calls"}]}"#
+        XCTAssertNil(parser.consume(line: first))
+        guard case .toolCalls(let calls, _)? = parser.consume(line: second) else {
+            return XCTFail("expected completed function call")
+        }
+        XCTAssertEqual(calls.count, 1)
+        XCTAssertEqual(calls[0].id, "call-1")
+        XCTAssertEqual(calls[0].name, "calculator")
+        XCTAssertEqual(calls[0].arguments, #"{"expression":"2*3"}"#)
+        XCTAssertFalse(parser.isFinished, "the stream may still report token usage before [DONE]")
+        XCTAssertNil(parser.consume(line: "data: [DONE]"))
+        XCTAssertTrue(parser.isFinished)
+    }
+
+    func testOpenAIResponsesExtractsFunctionCallsAndUsage() {
+        var parser = SSEParser(family: .openAIResponses)
+        let line = #"data: {"type":"response.completed","response":{"output":[{"type":"function_call","call_id":"call-2","name":"calculator","arguments":"{\"expression\":\"4+5\"}"}],"usage":{"input_tokens":12,"output_tokens":3}}}"#
+        guard case .toolCalls(let calls, let usage)? = parser.consume(line: line) else {
+            return XCTFail("expected Responses function call")
+        }
+        XCTAssertEqual(calls.first?.id, "call-2")
+        XCTAssertEqual(calls.first?.name, "calculator")
+        XCTAssertEqual(calls.first?.arguments, #"{"expression":"4+5"}"#)
+        XCTAssertEqual(usage?.inputTokens, 12)
+        XCTAssertTrue(parser.isFinished)
+    }
+
+    func testGoogleParsesFunctionCallParts() {
+        var parser = SSEParser(family: .google)
+        let line = #"data: {"usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":2},"candidates":[{"content":{"parts":[{"functionCall":{"name":"calculator","args":{"expression":"6*7"}}}]},"finishReason":"STOP"}]}"#
+        guard case .toolCalls(let calls, let usage)? = parser.consume(line: line) else {
+            return XCTFail("expected Gemini function call")
+        }
+        XCTAssertEqual(calls.first?.name, "calculator")
+        XCTAssertEqual(calls.first?.arguments, #"{"expression":"6*7"}"#)
+        XCTAssertEqual(usage?.inputTokens, 8)
+        XCTAssertTrue(parser.isFinished)
+    }
 }

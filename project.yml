@@ -46,6 +46,9 @@ targets:
         PRODUCT_NAME: ChattyChattyGoGo
         INFOPLIST_KEY_CFBundleDisplayName: "ChattyChatty GoGo"
         INFOPLIST_KEY_NSFaceIDUsageDescription: "Face ID keeps your private conversations locked when you leave the app."
+        INFOPLIST_KEY_NSCalendarsFullAccessUsageDescription: "ChattyChatty GoGo can find or create calendar events when you ask it to. The app asks before sharing event details or creating an event."
+        INFOPLIST_KEY_NSRemindersFullAccessUsageDescription: "ChattyChatty GoGo can create reminders when you ask it to, after showing you the proposed reminder for confirmation."
+        INFOPLIST_KEY_NSContactsUsageDescription: "ChattyChatty GoGo can look up a contact when you ask it to. The app asks before sharing matching details with a model."
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"

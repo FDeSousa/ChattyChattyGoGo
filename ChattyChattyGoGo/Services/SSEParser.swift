@@ -5,8 +5,16 @@ import Foundation
 /// The gateway exposes four provider dialects; each one frames its deltas and its token
 /// usage differently, so the parser is aware of which family the stream belongs to.
 struct SSEParser {
+    private struct PartialFunctionCall {
+        var id = ""
+        var name = ""
+        var arguments = ""
+    }
+
     let family: APIFamily
     private var eventName: String?
+    private var openAIToolCalls: [Int: PartialFunctionCall] = [:]
+    private var openAIToolCallsEmitted = false
     private(set) var isFinished = false
 
     init(family: APIFamily) {
@@ -43,6 +51,8 @@ struct SSEParser {
         if trimmed.isEmpty { return nil }
         if trimmed == "[DONE]" {
             isFinished = true
+            let calls = openAIToolCallsEmitted ? [] : finalizedOpenAIToolCalls()
+            if !calls.isEmpty { return .toolCalls(calls) }
             return nil
         }
         guard let data = trimmed.data(using: .utf8) else { return nil }
@@ -72,10 +82,30 @@ struct SSEParser {
         if let usage = openAIUsage(object["usage"] as? [String: Any]) {
             return .usage(usage)
         }
-        guard let choices = object["choices"] as? [[String: Any]],
-              let delta = choices.first?["delta"] as? [String: Any] else {
+        guard let choices = object["choices"] as? [[String: Any]], let choice = choices.first else {
             return nil
         }
+        if let delta = choice["delta"] as? [String: Any],
+           let toolDeltas = delta["tool_calls"] as? [[String: Any]] {
+            for toolDelta in toolDeltas {
+                let index = (toolDelta["index"] as? NSNumber)?.intValue ?? openAIToolCalls.count
+                var partial = openAIToolCalls[index] ?? PartialFunctionCall()
+                if let id = toolDelta["id"] as? String, !id.isEmpty { partial.id = id }
+                if let function = toolDelta["function"] as? [String: Any] {
+                    if let name = function["name"] as? String { partial.name += name }
+                    if let arguments = function["arguments"] as? String { partial.arguments += arguments }
+                }
+                openAIToolCalls[index] = partial
+            }
+        }
+        if (choice["finish_reason"] as? String) == "tool_calls" {
+            let calls = finalizedOpenAIToolCalls()
+            if !calls.isEmpty {
+                openAIToolCallsEmitted = true
+                return .toolCalls(calls)
+            }
+        }
+        guard let delta = choice["delta"] as? [String: Any] else { return nil }
         if let reasoning = delta["reasoning_content"] as? String, !reasoning.isEmpty {
             return .reasoning(reasoning)
         }
@@ -87,6 +117,17 @@ struct SSEParser {
             if !text.isEmpty { return .content(text) }
         }
         return nil
+    }
+
+    private func finalizedOpenAIToolCalls() -> [FunctionToolCall] {
+        openAIToolCalls.keys.sorted().compactMap { index in
+            guard let call = openAIToolCalls[index], !call.name.isEmpty else { return nil }
+            return FunctionToolCall(
+                id: call.id.isEmpty ? "call_\(index)" : call.id,
+                name: call.name,
+                arguments: call.arguments.isEmpty ? "{}" : call.arguments
+            )
+        }
     }
 
     private func openAIUsage(_ usage: [String: Any]?) -> TokenUsage? {
@@ -110,13 +151,26 @@ struct SSEParser {
             return text.isEmpty ? nil : .reasoning(text)
         case "response.completed", "response.incomplete", "response.failed":
             isFinished = true
-            if let response = object["response"] as? [String: Any],
-               let usage = response["usage"] as? [String: Any] {
+            let response = object["response"] as? [String: Any] ?? [:]
+            let output = response["output"] as? [[String: Any]] ?? []
+            let calls = output.compactMap { item -> FunctionToolCall? in
+                guard (item["type"] as? String) == "function_call",
+                      let name = item["name"] as? String else { return nil }
+                return FunctionToolCall(
+                    id: item["call_id"] as? String ?? item["id"] as? String ?? UUID().uuidString,
+                    name: name,
+                    arguments: item["arguments"] as? String ?? "{}"
+                )
+            }
+            var usageResult: TokenUsage?
+            if let usage = response["usage"] as? [String: Any] {
                 let input = (usage["input_tokens"] as? NSNumber)?.intValue ?? 0
                 let output = (usage["output_tokens"] as? NSNumber)?.intValue ?? 0
                 let cached = (usage["input_tokens_details"] as? [String: Any])?["cached_tokens"] as? NSNumber
-                return .usage(TokenUsage(inputTokens: input, outputTokens: output, cachedInputTokens: cached?.intValue ?? 0))
+                usageResult = TokenUsage(inputTokens: input, outputTokens: output, cachedInputTokens: cached?.intValue ?? 0)
             }
+            if !calls.isEmpty { return .toolCalls(calls, usage: usageResult) }
+            if let usageResult { return .usage(usageResult) }
             return nil
         default:
             // Be forgiving: some gateways stream the payload without an explicit type.
@@ -163,21 +217,34 @@ struct SSEParser {
     // MARK: - Google Gemini
 
     private mutating func googleEvent(_ object: [String: Any]) -> StreamEvent? {
+        var usageResult: TokenUsage?
         if let metadata = object["usageMetadata"] as? [String: Any] {
             let input = (metadata["promptTokenCount"] as? NSNumber)?.intValue ?? 0
             let output = (metadata["candidatesTokenCount"] as? NSNumber)?.intValue ?? 0
             let cached = (metadata["cachedContentTokenCount"] as? NSNumber)?.intValue ?? 0
-            return .usage(TokenUsage(inputTokens: input, outputTokens: output, cachedInputTokens: cached))
+            usageResult = TokenUsage(inputTokens: input, outputTokens: output, cachedInputTokens: cached)
         }
         guard let candidates = object["candidates"] as? [[String: Any]],
               let first = candidates.first,
               let content = first["content"] as? [String: Any],
               let parts = content["parts"] as? [[String: Any]] else {
-            return nil
+            return usageResult.map(StreamEvent.usage)
         }
         var text = ""
         var thought = ""
+        var toolCalls: [FunctionToolCall] = []
         for part in parts {
+            if let functionCall = part["functionCall"] as? [String: Any],
+               let name = functionCall["name"] as? String {
+                let arguments = functionCall["args"] as? [String: Any] ?? [:]
+                let data = (try? JSONSerialization.data(withJSONObject: arguments, options: [.sortedKeys])) ?? Data("{}".utf8)
+                toolCalls.append(FunctionToolCall(
+                    id: functionCall["id"] as? String ?? UUID().uuidString,
+                    name: name,
+                    arguments: String(data: data, encoding: .utf8) ?? "{}"
+                ))
+                continue
+            }
             guard let value = part["text"] as? String, !value.isEmpty else { continue }
             if (part["thought"] as? Bool) == true {
                 thought += value
@@ -185,6 +252,11 @@ struct SSEParser {
                 text += value
             }
         }
+        if !toolCalls.isEmpty {
+            isFinished = true
+            return .toolCalls(toolCalls, usage: usageResult)
+        }
+        if let usageResult { return .usage(usageResult) }
         if !thought.isEmpty { return .reasoning(thought) }
         if !text.isEmpty { return .content(text) }
         return nil

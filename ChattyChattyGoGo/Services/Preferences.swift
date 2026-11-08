@@ -37,6 +37,7 @@ enum Preferences {
         static let completedOnboarding = "completedOnboarding"
         static let familyOverrides = "familyOverrides"
         static let temperature = "temperature"
+        static let toolsEnabled = "toolsEnabled"
         static let enabledModelIDs = "enabledModelIDs"
         static let refusedModelIDs = "refusedModelIDs"
         static let refusedReasons = "refusedReasons"
@@ -76,6 +77,13 @@ enum Preferences {
                 defaults.removeObject(forKey: Key.temperature)
             }
         }
+    }
+
+    /// Whether model-invoked app tools are offered on eligible models.
+    /// Enabled by default for new and upgraded installs.
+    static var toolsEnabled: Bool {
+        get { (defaults.object(forKey: Key.toolsEnabled) as? Bool) ?? true }
+        set { defaults.set(newValue, forKey: Key.toolsEnabled) }
     }
 
     static var theme: ThemeMode {
@@ -138,6 +146,7 @@ enum Preferences {
             Key.completedOnboarding,
             Key.familyOverrides,
             Key.temperature,
+            Key.toolsEnabled,
             Key.enabledModelIDs,
             Key.modelListUpdatedAt,
             Key.refusedModelIDs,

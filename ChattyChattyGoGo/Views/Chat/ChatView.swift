@@ -148,6 +148,19 @@ struct ChatView: View {
                 } else if let error = viewModel.errorBanner {
                     errorBar(error)
                 }
+                if let activeToolName = viewModel.activeToolName {
+                    HStack(spacing: 7) {
+                        ProgressView()
+                            .controlSize(.mini)
+                        Text(activeToolName)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 5)
+                    .accessibilityElement(children: .combine)
+                }
                 ComposerBar(
                     text: $viewModel.draft,
                     attachments: pendingAttachments,
@@ -213,6 +226,21 @@ struct ChatView: View {
                 conversation.updatedAt = .now
                 try? modelContext.save()
             }
+        }
+        .confirmationDialog(
+            viewModel.pendingToolApproval?.title ?? "Confirm app action",
+            isPresented: Binding(
+                get: { viewModel.pendingToolApproval != nil },
+                set: { if !$0 { viewModel.rejectPendingTool() } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let approval = viewModel.pendingToolApproval {
+                Button(approval.confirmTitle) { viewModel.approvePendingTool() }
+                Button("Cancel", role: .cancel) { viewModel.rejectPendingTool() }
+            }
+        } message: {
+            Text(viewModel.pendingToolApproval?.message ?? "")
         }
         .task {
             viewModel.configure(conversation: conversation, context: modelContext, appState: appState)

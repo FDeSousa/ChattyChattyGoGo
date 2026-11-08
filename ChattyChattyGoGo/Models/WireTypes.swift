@@ -50,18 +50,39 @@ enum WireAttachment: Sendable, Hashable {
     }
 }
 
+/// A function the model may ask the app to execute.
+struct FunctionToolDefinition: Sendable {
+    let name: String
+    let description: String
+    let parameters: JSONValue
+}
+
+/// A function call returned by a model.
+struct FunctionToolCall: Sendable, Hashable {
+    let id: String
+    let name: String
+    /// JSON-encoded argument object.
+    let arguments: String
+}
+
 /// A message in the wire format used by the providers.
 struct WireMessage: Sendable, Hashable {
     enum Role: String, Sendable {
         case user
         case assistant
         case system
+        case tool
     }
 
     let role: Role
     let content: String
     /// Images and document text that belong to this message.
     var attachments: [WireAttachment] = []
+    /// Function calls when this is an assistant tool-call message.
+    var toolCalls: [FunctionToolCall] = []
+    /// The call id and name when this is a tool-result message.
+    var toolCallID: String? = nil
+    var toolName: String? = nil
 }
 
 /// Token counts reported by the provider for one request.
@@ -85,6 +106,15 @@ struct TokenUsage: Sendable, Equatable {
             cachedInputTokens: max(cachedInputTokens, other.cachedInputTokens)
         )
     }
+
+    /// Adds usage from a separate tool round to the totals for the whole turn.
+    func adding(_ other: TokenUsage) -> TokenUsage {
+        TokenUsage(
+            inputTokens: inputTokens + other.inputTokens,
+            outputTokens: outputTokens + other.outputTokens,
+            cachedInputTokens: cachedInputTokens + other.cachedInputTokens
+        )
+    }
 }
 
 /// One piece of streamed output.
@@ -92,6 +122,7 @@ enum StreamEvent: Sendable {
     case content(String)
     case reasoning(String)
     case usage(TokenUsage)
+    case toolCalls([FunctionToolCall], usage: TokenUsage? = nil)
 }
 
 /// Everything needed to perform one completion.
@@ -104,6 +135,7 @@ struct ChatRequest: Sendable {
     let temperature: Double?
     /// Stable per-conversation id, sent as `x-opencode-session`.
     let sessionID: String
+    let tools: [FunctionToolDefinition]
 
     init(
         model: ModelInfo,
@@ -112,7 +144,8 @@ struct ChatRequest: Sendable {
         reasoning: ReasoningLevel = .off,
         apiKey: String,
         temperature: Double? = nil,
-        sessionID: String = ""
+        sessionID: String = "",
+        tools: [FunctionToolDefinition] = []
     ) {
         self.model = model
         self.messages = messages
@@ -121,11 +154,12 @@ struct ChatRequest: Sendable {
         self.apiKey = apiKey
         self.temperature = temperature
         self.sessionID = sessionID
+        self.tools = tools
     }
 }
 
 /// Minimal, `Sendable` JSON tree so request bodies never cross actor boundaries with `Any`.
-enum JSONValue: Sendable, Encodable {
+enum JSONValue: Sendable, Codable {
     case string(String)
     case int(Int)
     case double(Double)
@@ -133,6 +167,27 @@ enum JSONValue: Sendable, Encodable {
     case array([JSONValue])
     case object([String: JSONValue])
     case null
+
+    init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer()
+        if value.decodeNil() {
+            self = .null
+        } else if let boolean = try? value.decode(Bool.self) {
+            self = .bool(boolean)
+        } else if let integer = try? value.decode(Int.self) {
+            self = .int(integer)
+        } else if let number = try? value.decode(Double.self) {
+            self = .double(number)
+        } else if let string = try? value.decode(String.self) {
+            self = .string(string)
+        } else if let array = try? value.decode([JSONValue].self) {
+            self = .array(array)
+        } else if let object = try? value.decode([String: JSONValue].self) {
+            self = .object(object)
+        } else {
+            throw DecodingError.dataCorruptedError(in: value, debugDescription: "Unsupported JSON value")
+        }
+    }
 
     func encode(to encoder: Encoder) throws {
         var container = encoder.singleValueContainer()

@@ -191,6 +191,13 @@ struct SettingsView: View {
                 Label("Default thinking", systemImage: "brain.head.profile")
             }
 
+            Toggle(isOn: Binding(
+                get: { Preferences.toolsEnabled },
+                set: { Preferences.toolsEnabled = $0 }
+            )) {
+                Label("Allow app tools", systemImage: "wrench.and.screwdriver")
+            }
+
             NavigationLink {
                 TemperatureSettingsView()
             } label: {
@@ -205,7 +212,7 @@ struct SettingsView: View {
         } header: {
             Text("Models")
         } footer: {
-            Text("Thinking only applies to models that support a reasoning budget. Jev answers typed questions rather than chatting - trials live here.")
+            Text("Thinking and app tools are offered only for models that support them. Tool calls that access private data or create calendar items always ask for approval. Jev answers typed questions rather than chatting - trials live here.")
         }
     }
 

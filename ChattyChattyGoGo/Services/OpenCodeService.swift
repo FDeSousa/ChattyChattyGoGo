@@ -352,6 +352,32 @@ struct OpenCodeService: @unchecked Sendable {
             messages.append(.object(["role": .string("system"), "content": .string(system)]))
         }
         for message in request.messages {
+            if message.role == .tool {
+                messages.append(.object([
+                    "role": .string("tool"),
+                    "tool_call_id": .string(message.toolCallID ?? ""),
+                    "content": .string(message.content)
+                ]))
+                continue
+            }
+            if message.role == .assistant, !message.toolCalls.isEmpty {
+                let calls = message.toolCalls.map { call in
+                    JSONValue.object([
+                        "id": .string(call.id),
+                        "type": .string("function"),
+                        "function": .object([
+                            "name": .string(call.name),
+                            "arguments": .string(call.arguments)
+                        ])
+                    ])
+                }
+                messages.append(.object([
+                    "role": .string("assistant"),
+                    "content": message.content.isEmpty ? .null : .string(message.content),
+                    "tool_calls": .array(calls)
+                ]))
+                continue
+            }
             let content = openAIContent(for: message)
             messages.append(.object([
                 "role": .string(message.role.rawValue),
@@ -373,7 +399,41 @@ struct OpenCodeService: @unchecked Sendable {
         if let temperature = request.temperature {
             body["temperature"] = .double(temperature)
         }
+        if !request.tools.isEmpty {
+            body["tools"] = .array(request.tools.map { tool in
+                .object([
+                    "type": .string("function"),
+                    "function": .object([
+                        "name": .string(tool.name),
+                        "description": .string(tool.description),
+                        "parameters": tool.parameters
+                    ])
+                ])
+            })
+            body["tool_choice"] = .string("auto")
+        }
         return .object(body)
+    }
+
+    /// Gemini's function schema uses uppercase type names and doesn't accept
+    /// the OpenAI JSON Schema `additionalProperties` field.
+    private func googleSchema(_ value: JSONValue) -> JSONValue {
+        switch value {
+        case .object(let object):
+            var converted: [String: JSONValue] = [:]
+            for (key, child) in object where key != "additionalProperties" {
+                if key == "type", case .string(let type) = child {
+                    converted[key] = .string(type.uppercased())
+                } else {
+                    converted[key] = googleSchema(child)
+                }
+            }
+            return .object(converted)
+        case .array(let values):
+            return .array(values.map(googleSchema))
+        default:
+            return value
+        }
     }
 
     /// Chat completions use a plain string for text, and an array of parts when a
@@ -425,6 +485,31 @@ struct OpenCodeService: @unchecked Sendable {
     private func openAIResponsesBody(_ request: ChatRequest, options: BodyOptions) -> JSONValue {
         var input: [JSONValue] = []
         for message in request.messages {
+            if message.role == .tool {
+                input.append(.object([
+                    "type": .string("function_call_output"),
+                    "call_id": .string(message.toolCallID ?? ""),
+                    "output": .string(message.content)
+                ]))
+                continue
+            }
+            if message.role == .assistant, !message.toolCalls.isEmpty {
+                if !message.content.isEmpty {
+                    input.append(.object([
+                        "role": .string("assistant"),
+                        "content": .string(message.content)
+                    ]))
+                }
+                input.append(contentsOf: message.toolCalls.map { call in
+                    .object([
+                        "type": .string("function_call"),
+                        "call_id": .string(call.id),
+                        "name": .string(call.name),
+                        "arguments": .string(call.arguments)
+                    ])
+                })
+                continue
+            }
             var parts: [JSONValue] = [
                 .object([
                     "type": .string("input_text"),
@@ -477,6 +562,18 @@ struct OpenCodeService: @unchecked Sendable {
         }
         if let temperature = request.temperature {
             body["temperature"] = .double(temperature)
+        }
+        if !request.tools.isEmpty {
+            body["tools"] = .array(request.tools.map { tool in
+                .object([
+                    "type": .string("function"),
+                    "name": .string(tool.name),
+                    "description": .string(tool.description),
+                    "parameters": tool.parameters,
+                    "strict": .bool(false)
+                ])
+            })
+            body["tool_choice"] = .string("auto")
         }
         return .object(body)
     }
@@ -546,7 +643,30 @@ struct OpenCodeService: @unchecked Sendable {
         var contents: [JSONValue] = []
         for message in request.messages where message.role != .system {
             let role = message.role == .assistant ? "model" : "user"
-            var parts: [JSONValue] = [.object(["text": .string(message.content)])]
+            var parts: [JSONValue] = []
+            if message.role == .assistant, !message.toolCalls.isEmpty {
+                parts = message.toolCalls.map { call in
+                    let arguments = (try? JSONDecoder().decode(JSONValue.self, from: Data(call.arguments.utf8)))
+                        ?? .object([:])
+                    return .object([
+                        "functionCall": .object([
+                            "name": .string(call.name),
+                            "args": arguments
+                        ])
+                    ])
+                }
+            } else if message.role == .tool {
+                let response = (try? JSONDecoder().decode(JSONValue.self, from: Data(message.content.utf8)))
+                    ?? .object(["result": .string(message.content)])
+                parts = [.object([
+                    "functionResponse": .object([
+                        "name": .string(message.toolName ?? "tool"),
+                        "response": response
+                    ])
+                ])]
+            } else {
+                parts = [.object(["text": .string(message.content)])]
+            }
             for attachment in message.attachments {
                 switch attachment {
                 case .image(let mimeType, let base64):
@@ -592,6 +712,20 @@ struct OpenCodeService: @unchecked Sendable {
         }
         if !generationConfig.isEmpty {
             body["generationConfig"] = .object(generationConfig)
+        }
+        if !request.tools.isEmpty {
+            body["tools"] = .array([.object([
+                "functionDeclarations": .array(request.tools.map { tool in
+                    .object([
+                        "name": .string(tool.name),
+                        "description": .string(tool.description),
+                        "parameters": googleSchema(tool.parameters)
+                    ])
+                })
+            ])])
+            body["toolConfig"] = .object([
+                "functionCallingConfig": .object(["mode": .string("AUTO")])
+            ])
         }
         return .object(body)
     }

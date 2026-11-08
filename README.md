@@ -26,6 +26,10 @@ opencode.ai  ←  your API key (keychain)  ←  ChattyChatty GoGo  ←  on-devic
   Documents are turned into text so every model can read them; images are sent to the models
   that can look at them.
 - **Thinking level** (Off / Balanced / Deep) for models that support a reasoning budget.
+- **App tools** for models marked as tool-capable: calculator, unit and date conversion, on-device image OCR,
+  saved-chat search, single-URL reading, calendar lookup/event creation, reminders, contact lookup, and Apple Maps links.
+  The model can request a tool; the app asks before sharing private chat/calendar/contact data or creating events and reminders.
+  Disable **Allow app tools** in Settings to stop sending tool definitions (and their extra prompt tokens).
 - **Auto** — a daily rotating pick from a curated pool of strong, non-contributor-tier models,
   restricted to the ones your account has enabled.
 - **Usage** view showing the rolling / weekly / monthly allowance straight from the OpenCode API.

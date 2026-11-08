@@ -68,14 +68,20 @@ final class OpenCodeServiceTests: XCTestCase {
         ModelInfo(id: id, displayName: id, family: family, summary: "", bestFor: [])
     }
 
-    private func request(_ model: ModelInfo, reasoning: ReasoningLevel = .off) -> ChatRequest {
+    private func request(
+        _ model: ModelInfo,
+        reasoning: ReasoningLevel = .off,
+        messages: [WireMessage]? = nil,
+        tools: [FunctionToolDefinition] = []
+    ) -> ChatRequest {
         ChatRequest(
             model: model,
-            messages: [WireMessage(role: .user, content: "Hi")],
+            messages: messages ?? [WireMessage(role: .user, content: "Hi")],
             systemPrompt: "Be brief",
             reasoning: reasoning,
             apiKey: "sk-test",
-            sessionID: "ses_" + String(repeating: "a", count: 64)
+            sessionID: "ses_" + String(repeating: "a", count: 64),
+            tools: tools
         )
     }
 
@@ -169,6 +175,35 @@ final class OpenCodeServiceTests: XCTestCase {
         XCTAssertEqual(messages[1]["content"] as? String, "Hi")
     }
 
+    func testOpenAIChatEncodesToolsAndToolResults() async throws {
+        MockURLProtocol.replies = [MockURLProtocol.Reply(body: "data: [DONE]\n")]
+        let call = FunctionToolCall(id: "call-1", name: "calculator", arguments: #"{"expression":"2+2"}"#)
+        let definition = FunctionToolDefinition(
+            name: "calculator",
+            description: "Calculate exactly.",
+            parameters: .object(["type": .string("object"), "properties": .object(["expression": .object(["type": .string("string")])])])
+        )
+        let request = request(
+            model(),
+            messages: [
+                WireMessage(role: .assistant, content: "", toolCalls: [call]),
+                WireMessage(role: .tool, content: "{\"value\":4}", toolCallID: call.id, toolName: call.name)
+            ],
+            tools: [definition]
+        )
+        let service = OpenCodeService(session: MockURLProtocol.makeSession())
+        _ = try await collect(service.stream(request, families: [.openAIChat]))
+
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: MockURLProtocol.bodies[0]) as? [String: Any])
+        let tools = try XCTUnwrap(body["tools"] as? [[String: Any]])
+        XCTAssertEqual((tools.first?["function"] as? [String: Any])?["name"] as? String, "calculator")
+        let messages = try XCTUnwrap(body["messages"] as? [[String: Any]])
+        let assistant = try XCTUnwrap(messages.first { $0["role"] as? String == "assistant" })
+        XCTAssertEqual((assistant["tool_calls"] as? [[String: Any]])?.first?["id"] as? String, "call-1")
+        let toolResult = try XCTUnwrap(messages.first { $0["role"] as? String == "tool" })
+        XCTAssertEqual(toolResult["tool_call_id"] as? String, "call-1")
+    }
+
     func testOpenAIResponsesRequestAndStream() async throws {
         MockURLProtocol.replies = [
             MockURLProtocol.Reply(body: """
@@ -187,6 +222,29 @@ final class OpenCodeServiceTests: XCTestCase {
         XCTAssertEqual(body["instructions"] as? String, "Be brief")
         let input = try XCTUnwrap(body["input"] as? [[String: Any]])
         XCTAssertEqual(input.count, 1)
+    }
+
+    func testOpenAIResponsesEncodesFunctionCallAndOutputItems() async throws {
+        MockURLProtocol.replies = [MockURLProtocol.Reply(body: "event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"output\":[],\"usage\":{}}}\n\n")]
+        let call = FunctionToolCall(id: "call-2", name: "current_time", arguments: "{}")
+        let definition = FunctionToolDefinition(name: "current_time", description: "Get the time.", parameters: .object(["type": .string("object")]))
+        let request = request(
+            model("gpt-6-luna", family: .openAIResponses),
+            messages: [
+                WireMessage(role: .assistant, content: "", toolCalls: [call]),
+                WireMessage(role: .tool, content: "{\"time_zone\":\"UTC\"}", toolCallID: call.id, toolName: call.name)
+            ],
+            tools: [definition]
+        )
+        let service = OpenCodeService(session: MockURLProtocol.makeSession())
+        _ = try await collect(service.stream(request, families: [.openAIResponses]))
+
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: MockURLProtocol.bodies[0]) as? [String: Any])
+        let tools = try XCTUnwrap(body["tools"] as? [[String: Any]])
+        XCTAssertEqual(tools.first?["name"] as? String, "current_time")
+        let input = try XCTUnwrap(body["input"] as? [[String: Any]])
+        XCTAssertEqual(input.first(where: { $0["type"] as? String == "function_call" })?["call_id"] as? String, "call-2")
+        XCTAssertEqual(input.first(where: { $0["type"] as? String == "function_call_output" })?["call_id"] as? String, "call-2")
     }
 
     func testAnthropicRequestAndStream() async throws {
@@ -233,6 +291,32 @@ final class OpenCodeServiceTests: XCTestCase {
         XCTAssertNotNil(body["systemInstruction"])
         let contents = try XCTUnwrap(body["contents"] as? [[String: Any]])
         XCTAssertEqual(contents[0]["role"] as? String, "user")
+    }
+
+    func testGoogleEncodesToolDeclarationsAndFunctionResponses() async throws {
+        MockURLProtocol.replies = [MockURLProtocol.Reply(body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Done\"}]}}]}\n")]
+        let call = FunctionToolCall(id: "call-3", name: "calculator", arguments: #"{"expression":"2+2"}"#)
+        let definition = FunctionToolDefinition(name: "calculator", description: "Calculate exactly.", parameters: .object(["type": .string("object")]))
+        let request = request(
+            model("gemini-4-argon", family: .google),
+            messages: [
+                WireMessage(role: .assistant, content: "", toolCalls: [call]),
+                WireMessage(role: .tool, content: "{\"value\":4}", toolCallID: call.id, toolName: call.name)
+            ],
+            tools: [definition]
+        )
+        let service = OpenCodeService(session: MockURLProtocol.makeSession())
+        _ = try await collect(service.stream(request, families: [.google]))
+
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: MockURLProtocol.bodies[0]) as? [String: Any])
+        let tools = try XCTUnwrap(body["tools"] as? [[String: Any]])
+        let declarations = try XCTUnwrap(tools.first?["functionDeclarations"] as? [[String: Any]])
+        XCTAssertEqual(declarations.first?["name"] as? String, "calculator")
+        let contents = try XCTUnwrap(body["contents"] as? [[String: Any]])
+        let modelParts = try XCTUnwrap(contents.first(where: { $0["role"] as? String == "model" })?["parts"] as? [[String: Any]])
+        XCTAssertNotNil(modelParts.first?["functionCall"])
+        let resultParts = try XCTUnwrap(contents.first(where: { $0["role"] as? String == "user" })?["parts"] as? [[String: Any]])
+        XCTAssertNotNil(resultParts.first?["functionResponse"])
     }
 
     func testWrongFamilyFallsBackToTheNextEndpoint() async throws {
